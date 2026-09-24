@@ -1,0 +1,28 @@
+# Local configuration and runtime data
+dashboard-client.conf
+console-data/
+console-data/**
+*.env
+*.key
+*.pem
+
+# Build and language caches
+build/*
+!build/.gitkeep
+dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.gocache/
+
+# IDE and OS files
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Local logs and deployment artifacts
+*.log
+*.bak
+*.bak.*

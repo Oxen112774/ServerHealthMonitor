@@ -1,0 +1,162 @@
+# Server Health Monitor Agent Configuration (Go Edition)
+# Copy to /etc/server-health-monitor-agent.conf and edit as needed.
+# All values are optional — the agent has sensible defaults.
+
+# ---------------------------------------------------------------------------
+# Network
+# ---------------------------------------------------------------------------
+
+# Listen address (use 127.0.0.1 with the SSH tunnel launcher)
+# If exposing this service beyond localhost, enable authentication and HTTPS.
+host = "127.0.0.1"
+port = 8080
+
+# ---------------------------------------------------------------------------
+# Basic Authentication (leave empty to disable)
+# ---------------------------------------------------------------------------
+
+auth_user = ""
+auth_pass = ""
+
+# ---------------------------------------------------------------------------
+# Alert thresholds (triggers dashboard warning + toast + notifications)
+# ---------------------------------------------------------------------------
+
+warn_cpu = 90
+warn_memory = 90
+warn_disk = 85
+warn_load = 4
+warn_process_count = 500
+
+# ---------------------------------------------------------------------------
+# Network connectivity check (leave host empty to disable)
+# ---------------------------------------------------------------------------
+
+connectivity_host = ""
+connectivity_port = 443
+connectivity_timeout = 5
+
+# ---------------------------------------------------------------------------
+# Intervals (seconds)
+# ---------------------------------------------------------------------------
+
+# Metric collection interval (how often we sample CPU/memory/disk)
+collect_interval = 3
+
+# Health check interval (how often we check service health, 5-10 recommended)
+check_interval = 5
+
+# Maximum alerts to keep in memory
+max_alerts = 100
+
+# ---------------------------------------------------------------------------
+# Auto-recovery
+# ---------------------------------------------------------------------------
+
+# Consecutive failures before triggering restart
+failure_threshold = 3
+
+# Minimum seconds between restarts (prevents restart loops)
+restart_cooldown = 300
+
+# Maximum automatic restarts per instance in the rolling window
+max_restarts = 3
+
+# Rolling window for the automatic restart limit (seconds)
+restart_window = 3600
+
+# Seconds to wait for UDP port to come back after restart
+socket_wait_timeout = 30
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+# ServerChan (方糖) send key — pushes alerts to WeChat
+# Get key from: https://sct.ftqq.com/
+serverchan_key = ""
+
+# Discord / Slack compatible webhook URL
+webhook_url = ""
+
+# Minimum seconds between notifications per alert type (cooldown)
+notify_cooldown = 600
+
+# ---------------------------------------------------------------------------
+# Service filter
+# ---------------------------------------------------------------------------
+
+# Specific service name to monitor (empty = auto-discover all scpsl-*.service)
+service = ""
+service_port = ""
+
+# ---------------------------------------------------------------------------
+# TLS / HTTPS (zero-trust: encrypt all management-plane traffic)
+# Reference: NIST SP 800-52 Rev.2
+# ---------------------------------------------------------------------------
+
+tls_enabled = false
+tls_cert_file = ""
+tls_key_file = ""
+
+# ---------------------------------------------------------------------------
+# Prometheus /metrics endpoint authentication
+# Set to true to require Basic Auth on /metrics (configure basic_auth in
+# prometheus.yml scrape_config to match auth_user/auth_pass).
+# ---------------------------------------------------------------------------
+
+metrics_auth = false
+
+# ---------------------------------------------------------------------------
+# Adaptive anomaly detection (sliding-window Z-score + EWMA)
+# Reference: "A Survey of Time Series Anomaly Detection Methods in the
+# AIOps Domain" (arXiv:2308.00393)
+# Catches slow leaks and sudden spikes that static thresholds miss.
+# ---------------------------------------------------------------------------
+
+anomaly_enabled = false
+anomaly_window_size = 60     # samples (60 × 3s = 3 minutes of history)
+anomaly_z_threshold = 3.0    # 3-sigma rule (99.7% confidence)
+anomaly_ewma_alpha = 0.2     # EWMA smoothing factor (0 < alpha <= 1)
+
+# ---------------------------------------------------------------------------
+# Alert management (grouping / inhibition / escalation / silence)
+# Reference: Prometheus Alertmanager best practices;
+# "Alarm reduction and root cause inference based on association mining"
+# (Frontiers in Computer Science, 2023) — reduces 62% redundant alerts.
+# ---------------------------------------------------------------------------
+
+alert_group_window = 60      # seconds to batch related alerts before dispatch
+alert_escalate_after = 900   # seconds before unacknowledged critical alerts escalate
+alert_silence_enabled = true
+
+# ---------------------------------------------------------------------------
+# Email notification channel (SMTP)
+# Leave smtp_host empty to disable email.
+# ---------------------------------------------------------------------------
+
+smtp_host = ""
+smtp_port = 587
+smtp_user = ""
+smtp_password = ""
+smtp_from = ""
+smtp_to = ""          # comma-separated recipients, e.g. "ops@a.com,oncall@b.com"
+
+# ---------------------------------------------------------------------------
+# Extended metrics (always enabled, no config needed)
+# The agent now collects the following additional metrics and exposes them
+# via /api/status and dedicated endpoints:
+#
+#   /api/top       - Top 5 processes by CPU (pid, user, cpu%, memory_kb)
+#   /api/network   - Per-interface I/O rates (bytes/sec) + TCP connection stats
+#   /api/info      - Static system info (OS, kernel, arch, hostname, uptime)
+#   /api/services  - systemd service list (optional ?filter=running|failed)
+#
+# Metrics included in /api/status:
+#   - Swap usage (total/used/percent)
+#   - File descriptor usage (used/max)
+#   - TCP connection counts (established/time_wait/close_wait/listen/syn_sent)
+#   - Network interface I/O rates (rx/tx bytes per second)
+#   - Top 5 processes by CPU
+#   - System info (OS name, kernel version, architecture)
+# ---------------------------------------------------------------------------
