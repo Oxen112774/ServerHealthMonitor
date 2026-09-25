@@ -165,6 +165,26 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .retry-btn{padding:6px 16px;background:var(--error);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:opacity var(--ts)}
 .retry-btn:hover{opacity:.85}
 
+.inc-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:14px}
+.inc-stat{background:var(--card);border-radius:var(--radius-sm);padding:14px 16px;border:1px solid var(--border);box-shadow:var(--shadow)}
+.inc-stat .v{font-size:22px;font-weight:800;line-height:1.2}
+.inc-stat .k{font-size:11px;color:var(--text2);margin-top:4px}
+.inc-card{padding:14px 20px;border-bottom:1px solid var(--border-light)}
+.inc-card:last-child{border-bottom:none}
+.inc-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.inc-title{font-size:13px;font-weight:700;flex:1;min-width:120px}
+.inc-meta{font-size:11px;color:var(--text2);margin-top:6px;line-height:1.7;word-break:break-all}
+.inc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.inc-btn{padding:5px 12px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all var(--ts)}
+.inc-btn:hover{border-color:var(--primary);color:var(--primary);transform:translateY(-1px)}
+.inc-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.inc-btn.danger{background:var(--error);color:#fff;border-color:var(--error)}
+.inc-props{margin-top:10px;padding:10px 12px;background:var(--primary-light);border-radius:10px;font-size:12px;line-height:1.7}
+.inc-prop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0}
+.inc-prop-name{font-weight:700;flex:1;min-width:120px}
+.rb-item{padding:14px 20px;border-bottom:1px solid var(--border-light)}
+.rb-item:last-child{border-bottom:none}
+
 @media(max-width:768px){
 .header-inner{padding:12px 14px}
 .header-logo{width:38px;height:38px;font-size:20px}
@@ -238,6 +258,29 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     </div>
   </div>
 
+  <div class="section-title"><span class="bar"></span>事件与处置 (Incident &amp; Runbook)</div>
+  <div class="inc-stats" id="incStats"></div>
+  <div class="alerts-panel">
+    <div class="alerts-head">
+      <span>&#x1F6A8; 事件生命周期</span>
+      <span id="incCount" style="font-weight:400;font-size:12px;color:var(--text2)">0 个</span>
+    </div>
+    <div id="incList">
+      <div class="no-data"><span class="emoji">&#x1F7E2;</span>暂无事件记录</div>
+    </div>
+  </div>
+
+  <div class="section-title"><span class="bar"></span>Runbook 处置手册（默认仅建议，需逐个批准）</div>
+  <div class="alerts-panel">
+    <div class="alerts-head">
+      <span>&#x1F4D8; 处置动作目录</span>
+      <span id="rbCount" style="font-weight:400;font-size:12px;color:var(--text2)">0 个</span>
+    </div>
+    <div id="rbList">
+      <div class="no-data"><span class="emoji">&#x1F4D8;</span>Runbook 引擎未启用</div>
+    </div>
+  </div>
+
   <div class="footer">
     Server Health Monitor &mdash; Go Edition<br>
     <a href="/metrics" target="_blank">Prometheus Metrics</a> &middot;
@@ -292,6 +335,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     </button>
     <button class="nav-item" onclick="scrollToSection('alertsList',this)">
       <span class="nav-icon">&#x1F514;</span>告警
+    </button>
+    <button class="nav-item" onclick="scrollToSection('incList',this)">
+      <span class="nav-icon">&#x1F6A8;</span>事件
     </button>
     <button class="nav-item" onclick="toggleSettings()">
       <span class="nav-icon">&#x2699;</span>设置
@@ -394,6 +440,7 @@ async function fetchData(){
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     updateUI(data);
+    fetchIncidents();
     setConn(true);
   }catch(e){
     setConn(false);
@@ -483,6 +530,219 @@ function updateUI(data){
       }
     }
   }
+}
+
+// --- 事件生命周期与 Runbook 处置 ---
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function fmtDur(sec){
+  sec=Number(sec)||0;
+  if(sec<60)return sec+' 秒';
+  if(sec<3600)return (sec/60).toFixed(1)+' 分钟';
+  return (sec/3600).toFixed(1)+' 小时';
+}
+const INC_STATUS={open:'待确认',triage:'已确认',mitigating:'处置中',resolved:'已解决',postmortem:'已复盘'};
+const INC_NEXT={open:['triage','mitigate','resolve'],triage:['mitigate','resolve'],mitigating:['resolve'],resolved:[],postmortem:[]};
+const INC_LABEL={triage:'确认事件',mitigate:'开始处置',resolve:'标记已解决'};
+
+async function fetchIncidents(){
+  try{
+    const results=await Promise.all([
+      fetch('/api/incidents?limit=20',{signal:AbortSignal.timeout(8000)}),
+      fetch('/api/incidents/stats',{signal:AbortSignal.timeout(8000)}),
+      fetch('/api/runbooks',{signal:AbortSignal.timeout(8000)})
+    ]);
+    if(results[0].ok)renderIncidents((await results[0].json()).incidents||[]);
+    if(results[1].ok)renderIncStats(await results[1].json());
+    if(results[2].ok)renderRunbooks((await results[2].json()).runbooks||[]);
+  }catch(e){}
+}
+
+function renderIncStats(s){
+  const el=document.getElementById('incStats');
+  const mttr=s.mttr_median_seconds?s.mttr_median_seconds:s.mttr_avg_seconds;
+  el.innerHTML=
+    '<div class="inc-stat"><div class="v" style="color:var(--error)">'+(s.active||0)+'</div><div class="k">进行中事件</div></div>'+
+    '<div class="inc-stat"><div class="v">'+(s.total||0)+'</div><div class="k">累计事件</div></div>'+
+    '<div class="inc-stat"><div class="v" style="color:var(--success)">'+(s.resolved||0)+'</div><div class="k">已解决</div></div>'+
+    '<div class="inc-stat"><div class="v">'+(mttr?fmtDur(mttr):'—')+'</div><div class="k">MTTR 中位数</div></div>'+
+    '<div class="inc-stat"><div class="v">'+(s.mttr_p90_seconds?fmtDur(s.mttr_p90_seconds):'—')+'</div><div class="k">MTTR P90</div></div>'+
+    '<div class="inc-stat"><div class="v">'+(s.active?(s.critical_active||0):0)+'</div><div class="k">进行中严重事件</div></div>';
+}
+
+function renderIncidents(list){
+  document.getElementById('incCount').textContent=list.length+' 个';
+  const el=document.getElementById('incList');
+  if(!list.length){
+    el.innerHTML='<div class="no-data"><span class="emoji">&#x1F7E2;</span>暂无事件记录</div>';
+    return;
+  }
+  el.innerHTML=list.map(function(inc){
+    const sev=inc.severity==='critical'?'red':(inc.severity==='warning'?'gray':'green');
+    const status=INC_STATUS[inc.status]||inc.status;
+    const cls=inc.status==='open'?'red':(inc.status==='resolved'||inc.status==='postmortem'?'green':'gray');
+    let meta='服务: '+esc(inc.service||'主机级');
+    if(inc.symptom)meta+=' | 症状: '+esc(inc.symptom);
+    meta+=' | 检测: '+esc((inc.detected_at||'').replace('T',' ').slice(0,19));
+    if(inc.mttr_seconds>0)meta+=' | MTTR: '+fmtDur(inc.mttr_seconds);
+    if(inc.runbook_id)meta+=' | 处置手册: '+esc(inc.runbook_id);
+    if(inc.root_cause)meta+='<br>根因: '+esc(inc.root_cause);
+
+    let actions='';
+    (INC_NEXT[inc.status]||[]).forEach(function(a){
+      actions+='<button class="inc-btn'+(a==='resolve'?' primary':'')+'" onclick="incAction(\''+esc(inc.id)+'\',\''+a+'\')">'+INC_LABEL[a]+'</button>';
+    });
+    if(inc.status==='resolved'){
+      actions+='<button class="inc-btn" onclick="incRootCause(\''+esc(inc.id)+'\')">填写根因</button>'+
+        '<button class="inc-btn primary" onclick="incAction(\''+esc(inc.id)+'\',\'postmortem\')">完成复盘</button>';
+    }
+    actions+='<button class="inc-btn" onclick="incProposals(\''+esc(inc.id)+'\')">处置建议</button>'+
+      '<button class="inc-btn" onclick="incNote(\''+esc(inc.id)+'\')">添加备注</button>';
+
+    const events=(inc.timeline||[]).slice(-3).map(function(ev){
+      return '<div>&bull; '+esc((ev.time||'').replace('T',' ').slice(0,19))+' ['+esc(ev.actor||'')+'/'+esc(ev.kind||'')+'] '+esc(ev.note||'')+'</div>';
+    }).join('');
+
+    return '<div class="inc-card"><div class="inc-head">'+
+      '<span class="badge '+cls+'">'+status+'</span>'+
+      '<span class="badge '+sev+'">'+esc(inc.severity||'')+'</span>'+
+      '<span class="inc-title">'+esc(inc.title)+'</span></div>'+
+      '<div class="inc-meta">'+meta+'</div>'+
+      (events?'<div class="inc-meta">'+events+'</div>':'')+
+      '<div class="inc-actions">'+actions+'</div>'+
+      '<div class="inc-props" id="incProps-'+esc(inc.id)+'" style="display:none"></div></div>';
+  }).join('');
+}
+
+async function incAction(id,action){
+  const body={};
+  if(action==='resolve'){
+    const note=prompt('解决说明（可选，例如：重启后端口恢复）：');
+    if(note===null)return;
+    body.note=note;
+  }
+  try{
+    const res=await fetch('/api/incidents/'+encodeURIComponent(id)+'/'+action,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+    });
+    const data=await res.json().catch(function(){return {};});
+    if(!res.ok){toast(data.message||'操作失败','critical');}
+    else{toast('事件状态已更新','recovery');}
+  }catch(e){toast('请求失败: '+e.message,'critical');}
+  fetchIncidents();
+}
+
+async function incNote(id){
+  const note=prompt('备注内容：');
+  if(!note)return;
+  try{
+    const res=await fetch('/api/incidents/'+encodeURIComponent(id)+'/note',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note})
+    });
+    const data=await res.json().catch(function(){return {};});
+    if(!res.ok)toast(data.message||'备注失败','critical');
+  }catch(e){toast('请求失败: '+e.message,'critical');}
+  fetchIncidents();
+}
+
+async function incRootCause(id){
+  const rc=prompt('根因分析（关闭复盘前必填）：');
+  if(!rc)return;
+  try{
+    const res=await fetch('/api/incidents/'+encodeURIComponent(id)+'/rootcause',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root_cause:rc})
+    });
+    const data=await res.json().catch(function(){return {};});
+    if(!res.ok)toast(data.message||'根因保存失败','critical');
+    else toast('根因已记录','recovery');
+  }catch(e){toast('请求失败: '+e.message,'critical');}
+  fetchIncidents();
+}
+
+async function incProposals(id){
+  const box=document.getElementById('incProps-'+id);
+  if(!box)return;
+  if(box.style.display!=='none'){box.style.display='none';return;}
+  box.style.display='block';
+  box.innerHTML='正在匹配处置方案...';
+  try{
+    const res=await fetch('/api/incidents/'+encodeURIComponent(id)+'/runbooks',{signal:AbortSignal.timeout(8000)});
+    const data=await res.json();
+    const list=data.proposals||[];
+    if(!list.length){box.innerHTML='没有匹配的 Runbook（症状: '+esc(data.symptom||'未知')+'）';return;}
+    box.innerHTML='<div style="font-weight:700;margin-bottom:6px">处置建议（'+list.length+'）</div>'+
+      list.map(function(p){
+        const tag=p.executable?'<span class="badge green">可执行</span>':'<span class="badge gray">仅建议</span>';
+        const btn=p.executable
+          ? '<button class="inc-btn primary" onclick="rbExecute(\''+esc(p.runbook_id)+'\',\''+esc(id)+'\')">执行</button>'
+          : '<button class="inc-btn" onclick="rbAction(\''+esc(p.runbook_id)+'\',\'approve\')">批准为可执行</button>';
+        return '<div class="inc-prop"><span class="inc-prop-name">'+esc(p.name)+'</span>'+tag+
+          '<span style="font-size:11px;color:var(--text2)">风险 '+esc(p.risk)+' · 半径 '+p.blast_radius+' · '+(p.reversible?'可逆':'不可逆')+'</span>'+btn+'</div>'+
+          '<div style="font-size:11px;color:var(--text2);padding:0 0 6px 0">'+esc(p.description)+
+          (p.reason?'<br><b>限制: '+esc(p.reason)+'</b>':'')+'</div>';
+      }).join('');
+  }catch(e){
+    box.innerHTML='加载失败: '+esc(e.message);
+  }
+}
+
+function renderRunbooks(list){
+  document.getElementById('rbCount').textContent=list.length+' 个';
+  const el=document.getElementById('rbList');
+  if(!list.length){
+    el.innerHTML='<div class="no-data"><span class="emoji">&#x1F4D8;</span>Runbook 引擎未启用</div>';
+    return;
+  }
+  el.innerHTML=list.map(function(rb){
+    const approved=rb.autonomy==='approved';
+    const badge=approved?'<span class="badge green">已授权执行</span>':'<span class="badge gray">仅建议</span>';
+    const btn=approved
+      ? '<button class="inc-btn danger" onclick="rbAction(\''+esc(rb.id)+'\',\'revoke\')">撤销授权</button>'
+      : '<button class="inc-btn primary" onclick="rbAction(\''+esc(rb.id)+'\',\'approve\')">批准为可执行</button>';
+    const steps=(rb.steps||[]).map(function(s){return esc(s.name)+' → '+esc(s.action);}).join(' · ');
+    return '<div class="rb-item"><div class="inc-head">'+badge+
+      '<span class="inc-title">'+esc(rb.name)+'</span></div>'+
+      '<div class="inc-meta">'+esc(rb.description)+'</div>'+
+      '<div class="inc-meta">触发: '+esc(rb.trigger||'手动')+' | 风险: '+esc(rb.risk)+' | 影响半径: '+rb.blast_radius+
+      ' | '+(rb.reversible?'可逆':'不可逆')+(rb.approved_by?' | 批准人: '+esc(rb.approved_by):'')+'</div>'+
+      '<div class="inc-meta">'+steps+'</div>'+
+      '<div class="inc-actions">'+btn+'</div></div>';
+  }).join('');
+}
+
+async function rbAction(id,action){
+  if(action==='approve'&&!confirm('批准后该 Runbook 将可被一键执行（自动化权限）。确认批准？'))return;
+  try{
+    const res=await fetch('/api/runbooks/'+encodeURIComponent(id)+'/'+action,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})
+    });
+    const data=await res.json().catch(function(){return {};});
+    if(!res.ok)toast(data.message||'操作失败','critical');
+    else toast(action==='approve'?'已授权执行':'已恢复为仅建议','recovery');
+  }catch(e){toast('请求失败: '+e.message,'critical');}
+  fetchIncidents();
+}
+
+async function rbExecute(runbookId,incidentId){
+  if(!confirm('即将执行 '+runbookId+'，可能重启服务并中断在线玩家。确认执行？'))return;
+  const body={incident_id:incidentId,confirm:'EXECUTE'};
+  toast('正在执行 '+runbookId+' ...','warning');
+  try{
+    const res=await fetch('/api/runbooks/'+encodeURIComponent(runbookId)+'/execute',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+    });
+    const data=await res.json().catch(function(){return {};});
+    if(!res.ok){toast('执行被拒绝: '+(data.message||res.status),'critical');}
+    else{
+      const steps=(data.steps||[]).map(function(s){return s.name+(s.error?(' ✗ '+s.error):' ✓');}).join(' / ');
+      toast(data.ok?'Runbook 执行成功':'Runbook 执行失败',data.ok?'recovery':'critical');
+      if(steps)alert((data.ok?'执行成功':'执行失败')+'\n\n'+steps);
+    }
+  }catch(e){toast('请求失败: '+e.message,'critical');}
+  fetchIncidents();
 }
 
 function card(label,icon,val,unit,threshold,hist,color,sub){

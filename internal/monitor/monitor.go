@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Oxen112774/ServerHealthMonitor/internal/anomaly"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/collector"
+	"github.com/Oxen112774/ServerHealthMonitor/internal/incident"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/notifier"
 )
 
@@ -59,7 +61,20 @@ type Monitor struct {
 	anomalyDisk   *anomaly.Detector
 	anomalyLoad   *anomaly.Detector
 	anomalyActive map[string]bool // anomaly alert latched until recovery
+
+	// incidentHook, when set, reports lifecycle transitions (detection, circuit
+	// trip, recovery) to the incident store. Keeping it a plain callback means
+	// the monitor stays a detector and never owns persistence.
+	incidentHook func(kind, service, symptom, title, message string)
 }
+
+// Lifecycle event kinds passed to the incident hook.
+const (
+	HookDetected = "detected"
+	HookCircuit  = "circuit_open"
+	HookResolved = "resolved"
+	HookResource = "resource"
+)
 
 // New creates a Monitor.
 func New(c *collector.Collector, n *notifier.Notifier, failureThreshold, restartCooldown, socketWaitTimeout int) *Monitor {
@@ -102,6 +117,16 @@ func (m *Monitor) States() map[string]InstanceState {
 	return out
 }
 
+// HasService reports whether a monitored instance with this name exists.
+// Callers use it to reject targeted operations on unknown service names
+// instead of silently reporting success.
+func (m *Monitor) HasService(service string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.states[service]
+	return ok
+}
+
 // ClearCircuit clears the automatic-remediation circuit for one service.
 // An empty service clears all circuits.
 func (m *Monitor) ClearCircuit(service string) bool {
@@ -137,6 +162,23 @@ func (m *Monitor) SetResourceThresholds(t ResourceThresholds) {
 	m.resThresholds = t
 }
 
+// SetIncidentHook installs the lifecycle callback. Pass nil to disable.
+func (m *Monitor) SetIncidentHook(fn func(kind, service, symptom, title, message string)) {
+	m.mu.Lock()
+	m.incidentHook = fn
+	m.mu.Unlock()
+}
+
+// fireIncident invokes the hook when one is installed. Callers hold m.mu; the
+// hook itself only touches the incident store, so there is no lock ordering
+// hazard.
+func (m *Monitor) fireIncident(kind, service, symptom, title, message string) {
+	if m.incidentHook == nil {
+		return
+	}
+	m.incidentHook(kind, service, symptom, title, message)
+}
+
 // Check runs one health check cycle for all instances.
 func (m *Monitor) Check() {
 	metrics, instances := m.collector.Get()
@@ -169,6 +211,7 @@ func (m *Monitor) checkResources(metrics collector.Metrics) {
 			Title:   title,
 			Message: message,
 		})
+		m.fireIncident(HookResource, "", incident.SymptomResourceHigh, title, message)
 	}
 	released := func(key string) {
 		if m.resActive[key] {
@@ -245,6 +288,8 @@ func (m *Monitor) checkAnomalies(metrics collector.Metrics) {
 			Title:   "[异常检测] " + title,
 			Message: message + "\n（基于滑动窗口 Z-score 自适应阈值，非静态阈值）",
 		})
+		m.fireIncident(HookResource, "", incident.SymptomResourceHigh,
+			"[异常检测] "+title, message+"\n（基于滑动窗口 Z-score 自适应阈值，非静态阈值）")
 	}
 	anomalyReleased := func(key string) {
 		if m.anomalyActive[key] {
@@ -311,14 +356,17 @@ func (m *Monitor) checkInstance(inst collector.Instance, now int64) {
 	}
 	isUnhealthy := false
 	reason := ""
+	symptom := ""
 
 	// Check service state
 	if inst.State == "inactive" || inst.State == "failed" {
 		isUnhealthy = true
 		reason = fmt.Sprintf("服务状态: %s", inst.State)
+		symptom = incident.SymptomServiceDown
 	} else if inst.UDP == "not-listening" {
 		isUnhealthy = true
 		reason = fmt.Sprintf("UDP 端口 %d 未监听", inst.Port)
+		symptom = incident.SymptomUDPNotListen
 	}
 
 	ts := time.Now().Format("2006-01-02 15:04:05")
@@ -336,6 +384,9 @@ func (m *Monitor) checkInstance(inst collector.Instance, now int64) {
 				Title:   fmt.Sprintf("服务异常 - %s", inst.Service),
 				Message: fmt.Sprintf("%s\n已开始计数，连续 %d 次后自动重启", reason, m.failureThreshold),
 			})
+			m.fireIncident(HookDetected, inst.Service, symptom,
+				fmt.Sprintf("服务异常 - %s", inst.Service),
+				fmt.Sprintf("%s\n已开始计数，连续 %d 次后自动重启", reason, m.failureThreshold))
 		}
 
 		// Reached threshold -> attempt restart
@@ -358,6 +409,10 @@ func (m *Monitor) checkInstance(inst collector.Instance, now int64) {
 					Message: fmt.Sprintf("%d 秒内自动重启达到 %d 次，已暂停自动重启；请人工恢复",
 						m.restartWindow, m.maxRestarts),
 				})
+				m.fireIncident(HookCircuit, inst.Service, incident.SymptomCircuitOpen,
+					fmt.Sprintf("自动修复熔断 - %s", inst.Service),
+					fmt.Sprintf("%d 秒内自动重启达到 %d 次，已暂停自动重启；请人工恢复",
+						m.restartWindow, m.maxRestarts))
 				st.LastState = inst.State
 				return
 			}
@@ -388,6 +443,9 @@ func (m *Monitor) checkInstance(inst collector.Instance, now int64) {
 				Title:   fmt.Sprintf("服务恢复 - %s", inst.Service),
 				Message: fmt.Sprintf("服务已恢复正常运行"),
 			})
+			m.fireIncident(HookResolved, inst.Service, "",
+				fmt.Sprintf("服务恢复 - %s", inst.Service),
+				"服务已恢复正常运行")
 		}
 		st.FailureCount = 0
 	}
@@ -417,45 +475,71 @@ func (m *Monitor) restartService(inst collector.Instance) {
 		Message: fmt.Sprintf("连续异常达到阈值，正在执行 systemctl restart"),
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "systemctl", "restart", inst.Service)
-	out, err := cmd.CombinedOutput()
+	summary, err := m.RestartInstance(inst.Service, inst.Port)
 	if err != nil {
-		log.Printf("[ERROR] 重启 %s 失败: %v, output: %s", inst.Service, err, string(out))
+		log.Printf("[ERROR] 重启 %s 失败: %v", inst.Service, err)
+		message := fmt.Sprintf("systemctl restart 失败: %v", err)
+		if summary != "" {
+			message = fmt.Sprintf("%s\n%s", message, summary)
+		}
 		m.notifier.Push(notifier.Alert{
 			Time:    time.Now().Format("2006-01-02 15:04:05"),
 			Type:    notifier.SeverityCritical,
 			Title:   fmt.Sprintf("重启失败 - %s", inst.Service),
-			Message: fmt.Sprintf("systemctl restart 失败: %v\n%s", err, string(out)),
+			Message: message,
 		})
 		return
 	}
 
-	// Wait for UDP port to come back
+	log.Printf("[INFO] %s %s", inst.Service, summary)
+	m.notifier.Push(notifier.Alert{
+		Time:    time.Now().Format("2006-01-02 15:04:05"),
+		Type:    notifier.SeverityRecovery,
+		Title:   fmt.Sprintf("重启成功 - %s", inst.Service),
+		Message: summary,
+	})
+}
+
+// restartTimeout bounds the systemctl restart call. A hung systemd job must
+// not pin the caller forever.
+const restartTimeout = 60 * time.Second
+
+// RestartInstance restarts one monitored systemd unit and waits for its UDP
+// socket to come back. It is the exported entry point for remediation runbooks
+// so operator-triggered and automatic restarts share exactly one code path —
+// including the "unknown service" guard, which prevents a runbook from
+// restarting an arbitrary unit name.
+func (m *Monitor) RestartInstance(service string, port int) (string, error) {
+	if !m.HasService(service) {
+		return "", fmt.Errorf("未监控的服务，拒绝操作: %s", service)
+	}
+	if port <= 0 {
+		m.mu.Lock()
+		if st, ok := m.states[service]; ok {
+			port = st.Port
+		}
+		m.mu.Unlock()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), restartTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "systemctl", "restart", service).CombinedOutput()
+	if err != nil {
+		return strings.TrimSpace(string(out)), fmt.Errorf("systemctl restart 失败: %w", err)
+	}
+	if port <= 0 {
+		return "服务已重启（未配置端口，跳过监听校验）", nil
+	}
+
 	waited := 0
 	for waited < m.socketWaitTimeout {
 		time.Sleep(2 * time.Second)
 		waited += 2
-		if checkUDPFast(inst.Port) {
-			log.Printf("[INFO] %s 重启成功，UDP 端口已恢复 (等待 %d 秒)", inst.Service, waited)
-			m.notifier.Push(notifier.Alert{
-				Time:    time.Now().Format("2006-01-02 15:04:05"),
-				Type:    notifier.SeverityRecovery,
-				Title:   fmt.Sprintf("重启成功 - %s", inst.Service),
-				Message: fmt.Sprintf("UDP 端口 %d 已恢复监听，用时 %d 秒", inst.Port, waited),
-			})
-			return
+		if checkUDPFast(port) {
+			return fmt.Sprintf("UDP 端口 %d 已恢复监听，用时 %d 秒", port, waited), nil
 		}
 	}
-
-	log.Printf("[WARN] %s 重启后 UDP 端口在 %d 秒内未恢复", inst.Service, m.socketWaitTimeout)
-	m.notifier.Push(notifier.Alert{
-		Time:    time.Now().Format("2006-01-02 15:04:05"),
-		Type:    notifier.SeverityCritical,
-		Title:   fmt.Sprintf("重启后端口未恢复 - %s", inst.Service),
-		Message: fmt.Sprintf("重启执行成功，但 UDP %d 在 %d 秒内未监听", inst.Port, m.socketWaitTimeout),
-	})
+	return "", fmt.Errorf("重启执行成功，但 UDP %d 在 %d 秒内未监听", port, m.socketWaitTimeout)
 }
 
 func checkUDPFast(port int) bool {

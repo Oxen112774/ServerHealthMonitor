@@ -15,8 +15,11 @@ import (
 	"github.com/Oxen112774/ServerHealthMonitor/internal/anomaly"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/collector"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/config"
+	"github.com/Oxen112774/ServerHealthMonitor/internal/incident"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/monitor"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/notifier"
+	"github.com/Oxen112774/ServerHealthMonitor/internal/remediation"
+	"github.com/Oxen112774/ServerHealthMonitor/internal/runbook"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/web"
 )
 
@@ -25,6 +28,7 @@ func main() {
 	configPath := flag.String("config", "/etc/server-health-monitor-agent.conf", "Path to config file")
 	host := flag.String("host", "", "Listen address (overrides config)")
 	port := flag.Int("port", 0, "Listen port (overrides config)")
+	dataDir := flag.String("data", "./agent-data", "Directory for incidents and runbook approvals")
 	flag.Parse()
 
 	// Load config
@@ -158,6 +162,63 @@ func main() {
 
 	h := web.New(c, n, cfg.AuthUser, cfg.AuthPass, cfg.MetricsAuth)
 	h.SetMonitor(m)
+
+	// ---------------------------------------------------------------------
+	// Incident lifecycle + remediation runbooks
+	//
+	// Detection (monitor) is bridged to the incident store through a callback,
+	// and the runbook engine is bridged back through an audit hook. Neither
+	// internal package depends on the other, which keeps the detector free of
+	// persistence concerns and the remediation engine free of storage.
+	// All runbooks start in recommend-only mode.
+	// ---------------------------------------------------------------------
+	incidents := incident.NewStore(*dataDir)
+	engine := runbook.NewEngine(*dataDir, runbook.Builtins(), remediation.Providers(remediation.Deps{
+		Monitor:  m,
+		Notifier: n,
+	}))
+	engine.SetAuditHook(func(runbookID, incidentID, actor, kind, note string) {
+		if incidentID == "" {
+			return
+		}
+		_, _ = incidents.AppendEvent(incidentID, actor, kind, note)
+	})
+	m.SetIncidentHook(func(kind, service, symptom, title, message string) {
+		switch kind {
+		case monitor.HookResolved:
+			inc, ok := incidents.ActiveForService(service)
+			if !ok {
+				return
+			}
+			if _, err := incidents.Transition(inc.ID, incident.StatusResolved, "monitor", message); err != nil {
+				log.Printf("[WARN] 事件 %s 无法置为已解决: %v", inc.ID, err)
+			}
+		case monitor.HookDetected, monitor.HookCircuit, monitor.HookResource:
+			severity := incident.SeverityWarning
+			if kind == monitor.HookCircuit {
+				severity = incident.SeverityCritical
+			}
+			inc, created, err := incidents.OpenForService(incident.Trigger{
+				Title:    title,
+				Service:  service,
+				Symptom:  symptom,
+				Severity: severity,
+				Labels:   map[string]string{"kind": kind},
+			})
+			if err != nil {
+				log.Printf("[WARN] 事件记录失败: %v", err)
+				return
+			}
+			if created {
+				log.Printf("[INCIDENT] 新建事件 %s: %s", inc.ID, inc.Title)
+			}
+		}
+	})
+
+	h.SetIncidents(incidents)
+	h.SetRunbooks(engine)
+	log.Printf("  Incidents:      enabled (data: %s)", *dataDir)
+	log.Printf("  Runbooks:       %d 个（默认仅建议，需逐个批准）", len(engine.List()))
 
 	// First collection
 	c.Collect()

@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/Oxen112774/ServerHealthMonitor/internal/collector"
+	"github.com/Oxen112774/ServerHealthMonitor/internal/incident"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/monitor"
 	"github.com/Oxen112774/ServerHealthMonitor/internal/notifier"
+	"github.com/Oxen112774/ServerHealthMonitor/internal/runbook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -25,6 +27,8 @@ type Handler struct {
 	collector *collector.Collector
 	notifier  *notifier.Notifier
 	monitor   *monitor.Monitor
+	incidents *incident.Store
+	runbooks  *runbook.Engine
 	authUser  string
 	authPass  string
 
@@ -162,6 +166,16 @@ func (h *Handler) SetMonitor(m *monitor.Monitor) {
 	h.monitor = m
 }
 
+// SetIncidents attaches the incident lifecycle store.
+func (h *Handler) SetIncidents(s *incident.Store) {
+	h.incidents = s
+}
+
+// SetRunbooks attaches the remediation runbook engine.
+func (h *Handler) SetRunbooks(e *runbook.Engine) {
+	h.runbooks = e
+}
+
 // Register routes on the given mux.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/", h.authWrap(h.handleDashboard))
@@ -172,6 +186,14 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/info", h.authWrap(h.handleAPIInfo))
 	mux.HandleFunc("/api/services", h.authWrap(h.handleAPIServices))
 	mux.HandleFunc("/api/remediation/reset", h.authWrap(h.handleRemediationReset))
+	// Incident lifecycle + remediation runbooks.
+	// Registration order matters: the literal /stats path is more specific
+	// than the /api/incidents/ subtree and wins for that exact request.
+	mux.HandleFunc("/api/incidents", h.authWrap(h.handleIncidentList))
+	mux.HandleFunc("/api/incidents/stats", h.authWrap(h.handleIncidentStats))
+	mux.HandleFunc("/api/incidents/", h.authWrap(h.handleIncidentItem))
+	mux.HandleFunc("/api/runbooks", h.authWrap(h.handleRunbookList))
+	mux.HandleFunc("/api/runbooks/", h.authWrap(h.handleRunbookItem))
 	mux.HandleFunc("/api/health", h.handleHealth)
 	mux.HandleFunc("/api/ready", h.handleReady)
 	if h.metricsAuth {
@@ -210,16 +232,17 @@ func (h *Handler) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 type apiResponse struct {
-	Timestamp   string                           `json:"timestamp"`
-	Server      apiServer                        `json:"server"`
-	Metrics     apiMetrics                       `json:"metrics"`
-	Instances   []collector.Instance             `json:"instances"`
-	Alerts      []notifier.Alert                 `json:"alerts"`
-	History     map[string][]float64             `json:"history"`
-	Remediation map[string]monitor.InstanceState `json:"remediation,omitempty"`
-	TopProcesses []collector.ProcessInfo         `json:"top_processes,omitempty"`
-	NetInterfaces []collector.NetIO              `json:"net_interfaces,omitempty"`
-	TCP         *collector.TCPStats              `json:"tcp,omitempty"`
+	Timestamp     string                           `json:"timestamp"`
+	Server        apiServer                        `json:"server"`
+	Metrics       apiMetrics                       `json:"metrics"`
+	Instances     []collector.Instance             `json:"instances"`
+	Alerts        []notifier.Alert                 `json:"alerts"`
+	NotifyDropped int                              `json:"notify_dropped"`
+	History       map[string][]float64             `json:"history"`
+	Remediation   map[string]monitor.InstanceState `json:"remediation,omitempty"`
+	TopProcesses  []collector.ProcessInfo          `json:"top_processes,omitempty"`
+	NetInterfaces []collector.NetIO                `json:"net_interfaces,omitempty"`
+	TCP           *collector.TCPStats              `json:"tcp,omitempty"`
 }
 
 type apiServer struct {
@@ -308,6 +331,7 @@ func (h *Handler) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		},
 		Instances:     instances,
 		Alerts:        alerts,
+		NotifyDropped: h.notifier.Dropped(),
 		History:       hist,
 		TopProcesses:  m.TopProcesses,
 		NetInterfaces: m.NetInterfaces,
@@ -342,6 +366,10 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleRemediationReset clears the automatic-remediation circuit.
+// A targeted reset (service=<name>) only touches that service; a full reset
+// requires an explicit {"confirm":"ALL"} acknowledgement, because silently
+// wiping every circuit removes the safety brake on automatic restarts.
 func (h *Handler) handleRemediationReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method must be POST", http.StatusMethodNotAllowed)
@@ -351,21 +379,68 @@ func (h *Handler) handleRemediationReset(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "monitor unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	service := r.URL.Query().Get("service")
-	if service == "" {
-		var body struct {
-			Service string `json:"service"`
-		}
-		if r.Body != nil {
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			service = body.Service
-		}
+
+	var body struct {
+		Service string `json:"service"`
+		Confirm string `json:"confirm"`
 	}
-	h.monitor.ClearCircuit(service)
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	service := strings.TrimSpace(r.URL.Query().Get("service"))
+	if service == "" {
+		service = strings.TrimSpace(body.Service)
+	}
+	confirm := strings.TrimSpace(r.URL.Query().Get("confirm"))
+	if confirm == "" {
+		confirm = strings.TrimSpace(body.Confirm)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+
+	if service == "" {
+		if !strings.EqualFold(confirm, "ALL") {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":  "confirmation_required",
+				"message": "清空全部熔断实例属于高影响操作：请在请求体提交 confirm=\"ALL\"，或改用 service=<名称> 精确重置。",
+			})
+			return
+		}
+	} else if !h.monitor.HasService(service) {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "unknown_service",
+			"service": service,
+			"message": "未找到该服务的监控记录，请确认服务名称后重试。",
+		})
+		return
+	}
+
+	changed := h.monitor.ClearCircuit(service)
+	scope := service
+	if scope == "" {
+		scope = "全部实例"
+	}
+	resultText := "没有处于熔断或重启状态的实例"
+	if changed {
+		resultText = "已清除熔断与重启记录"
+	}
+	// 重置会解除自动重启的安全制动，留下可追溯的审计记录。
+	if h.notifier != nil {
+		h.notifier.Push(notifier.Alert{
+			Time:  time.Now().Format("15:04:05"),
+			Type:  notifier.SeverityRecovery,
+			Title: "自动处置熔断已重置",
+			Message: fmt.Sprintf("范围: %s；结果: %s。请确认被重置的服务当前状态正常。",
+				scope, resultText),
+		})
+	}
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "cleared",
 		"service": service,
+		"scope":   scope,
+		"changed": changed,
 	})
 }
 
@@ -384,10 +459,10 @@ func (h *Handler) handleAPINetwork(w http.ResponseWriter, r *http.Request) {
 	m, _ := h.collector.Get()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"timestamp":     m.Timestamp,
-		"interfaces":    m.NetInterfaces,
-		"tcp":           m.TCP,
-		"connectivity":  m.Network,
+		"timestamp":    m.Timestamp,
+		"interfaces":   m.NetInterfaces,
+		"tcp":          m.TCP,
+		"connectivity": m.Network,
 	})
 }
 
@@ -409,9 +484,9 @@ func (h *Handler) handleAPIInfo(w http.ResponseWriter, r *http.Request) {
 // Optional ?filter=running or ?filter=failed to narrow results.
 func (h *Handler) handleAPIServices(w http.ResponseWriter, r *http.Request) {
 	type serviceInfo struct {
-		Name   string `json:"name"`
-		State  string `json:"state"`
-		Sub    string `json:"sub_state"`
+		Name  string `json:"name"`
+		State string `json:"state"`
+		Sub   string `json:"sub_state"`
 	}
 	var services []serviceInfo
 

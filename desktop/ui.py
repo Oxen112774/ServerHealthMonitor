@@ -850,6 +850,150 @@ var SCENARIOS = [
       {t:'定时重启数据库',c:false,e:'定时重启会导致业务中断，不是解决方案。'},
       {t:'换更大的服务器',c:false,e:'硬件升级不能替代 SQL 和架构优化。'}
     ]}
+  ]},
+  {id:'nginx_502',title:'Nginx 502 排查',icon:'🔴',difficulty:'入门',color:'#fb7185',desc:'网站突然 502 Bad Gateway，用户无法访问，如何快速定位和恢复？',steps:[
+    {q:'502 Bad Gateway 和 504 Gateway Timeout 的区别是什么？',opts:[
+      {t:'502是后端直接拒绝/崩溃，504是后端响应超时',c:true,e:'正确！502 = 网关从后端收到无效响应（后端进程挂了/连接被拒）；504 = 网关等后端响应超时（后端还活着但太慢）。'},
+      {t:'两者完全一样',c:false,e:'不一样，成因和排查方向不同。'},
+      {t:'502是前端问题，504是后端问题',c:false,e:'两者都是网关层错误，都和后端有关。'},
+      {t:'502是网络断了，504是服务器宕机',c:false,e:'理解反了，502通常是后端进程挂了，504是后端响应慢。'}
+    ]},
+    {q:'确认是 502 后，第一步检查什么？',opts:[
+      {t:'检查 Nginx 错误日志和后端服务状态',c:true,e:'正确！tail -f /var/log/nginx/error.log 看具体报错（connect() failed / upstream prematurely closed），同时 systemctl status 后端服务。'},
+      {t:'直接重启 Nginx',c:false,e:'重启 Nginx 不能解决后端挂了的问题。'},
+      {t:'检查域名 DNS',c:false,e:'DNS 问题是无法解析，不是 502。'},
+      {t:'清除浏览器缓存',c:false,e:'502 是服务端错误，和浏览器缓存无关。'}
+    ]},
+    {q:'日志显示 connect() failed (111: Connection refused)，说明什么？',opts:[
+      {t:'后端服务没启动或没在对应端口监听',c:true,e:'正确！Connection refused = 端口可达但没有程序监听。用 ss -tulpn | grep 端口 确认，然后启动后端服务。'},
+      {t:'Nginx 配置错了',c:false,e:'配置错误通常是 no live upstreams 或 host not found。'},
+      {t:'服务器内存满了',c:false,e:'内存满是 OOM，日志会显示 out of memory。'},
+      {t:'网络不通',c:false,e:'网络不通是 timeout，不是 refused。'}
+    ]},
+    {q:'后端服务正常但偶尔 502，日志显示 upstream prematurely closed connection，可能原因？',opts:[
+      {t:'后端处理时间超过 Nginx 的 proxy_read_timeout，或后端进程被 OOM kill',c:true,e:'正确！两种常见原因：① 后端响应太慢超过超时（默认60s）；② 后端进程因 OOM 被系统 kill。调整 proxy_read_timeout 或排查内存。'},
+      {t:'Nginx 版本太旧',c:false,e:'版本旧不会导致间歇性 502。'},
+      {t:'磁盘空间不足',c:false,e:'磁盘满会影响日志写入，但不是 502 的直接原因。'},
+      {t:'客户端网络不稳定',c:false,e:'客户端问题不会导致 502（502 是服务器到后端的问题）。'}
+    ]}
+  ]},
+  {id:'redis_timeout',title:'Redis 连接超时',icon:'🟡',difficulty:'进阶',color:'#fbbf24',desc:'业务报 Redis 连接超时，缓存命中率暴跌，如何排查和恢复？',steps:[
+    {q:'Redis 连接超时，首先确认什么？',opts:[
+      {t:'Redis 进程是否存活、端口是否监听、内存是否满',c:true,e:'正确！systemctl status redis、ss -tulpn | grep 6379、redis-cli info memory 看 used_memory 和 maxmemory。'},
+      {t:'直接重启 Redis',c:false,e:'重启会丢失缓存数据（如果没持久化），先排查原因。'},
+      {t:'清空所有缓存',c:false,e:'清空缓存会导致缓存雪崩，数据库压力骤增。'},
+      {t:'升级 Redis 版本',c:false,e:'版本升级不是应急手段。'}
+    ]},
+    {q:'Redis 内存达到 maxmemory，导致写入被拒，怎么处理？',opts:[
+      {t:'检查淘汰策略，设置合理的 maxmemory-policy（如 allkeys-lru），必要时临时调大 maxmemory',c:true,e:'正确！默认 noeviction 会拒绝写入。生产环境建议 allkeys-lru 或 volatile-lru。临时调大 maxmemory 应急，长期优化缓存大小和过期策略。'},
+      {t:'直接 FLUSHALL 清空',c:false,e:'FLUSHALL 会导致缓存雪崩，数据库瞬间被打满。'},
+      {t:'关闭 Redis 持久化',c:false,e:'持久化和内存满无关，关闭反而增加数据丢失风险。'},
+      {t:'不管它，等自动释放',c:false,e:'noeviction 策略下不会自动释放，写入持续失败。'}
+    ]},
+    {q:'Redis 存活但响应极慢，info 显示 blocked_clients 很多，可能原因？',opts:[
+      {t:'有大 key 操作（如 KEYS *、HGETALL 大哈希）或持久化 fork 阻塞',c:true,e:'正确！KEYS * 会阻塞主线程；RDB/AOF 重写时 fork 大内存进程会卡顿。用 SCAN 替代 KEYS，优化大 key，调整持久化策略。'},
+      {t:'Redis 版本太旧',c:false,e:'版本旧不会突然变慢。'},
+      {t:'网络带宽不够',c:false,e:'网络问题是连接超时，不是响应慢。'},
+      {t:'CPU 核心数太少',c:false,e:'Redis 单线程，CPU 通常不是瓶颈，除非有大 key 操作。'}
+    ]},
+    {q:'Redis 主从同步中断，从库数据过期，怎么恢复？',opts:[
+      {t:'检查主从网络和复制积压缓冲区，必要时全量重新同步',c:true,e:'正确！先看主从网络连通性，repl-backlog-size 是否足够。如果偏移量差距太大，从库执行 SLAVEOF NO ONE 再 SLAVEOF 主库 触发全量同步。'},
+      {t:'删除从库重建',c:false,e:'可以但不是首选，先尝试增量恢复。'},
+      {t:'切换到从库为主库',c:false,e:'从库数据过期，切换会导致数据丢失。'},
+      {t:'关闭主从同步',c:false,e:'关闭同步失去高可用，不是解决方案。'}
+    ]}
+  ]},
+  {id:'mysql_slow',title:'MySQL 慢查询',icon:'🟠',difficulty:'进阶',color:'#fb923c',desc:'数据库 CPU 飙高，查询缓慢，业务接口超时，如何系统优化？',steps:[
+    {q:'MySQL 响应慢，第一步用什么定位？',opts:[
+      {t:'开启慢查询日志，用 mysqldumpslow 或 pt-query-digest 分析 TOP 慢 SQL',c:true,e:'正确！SET GLOBAL slow_query_log=1; long_query_time=1; 然后用 mysqldumpslow -s t 或 pt-query-digest 找出耗时最长的 SQL。'},
+      {t:'直接重启 MySQL',c:false,e:'重启不能解决慢查询，且会中断业务。'},
+      {t:'升级 MySQL 配置',c:false,e:'没定位问题前调参是盲目操作。'},
+      {t:'增加从库',c:false,e:'加从库是读写分离方案，但慢查询本身还在。'}
+    ]},
+    {q:'慢查询日志显示一条 SQL 扫描 100 万行，EXPLAIN 显示 type=ALL，说明什么？',opts:[
+      {t:'没有走索引，全表扫描，需要加索引或优化 SQL',c:true,e:'正确！type=ALL 是全表扫描，性能最差。用 EXPLAIN 看 key 列，给 WHERE/JOIN/ORDER BY 字段加合适索引，避免 SELECT * 和函数包裹索引列。'},
+      {t:'数据量太大，必须分库分表',c:false,e:'100万行不算大，加索引通常就能解决，分库分表是后期方案。'},
+      {t:'MySQL 配置太低',c:false,e:'配置低不会导致全表扫描，这是 SQL 和索引问题。'},
+      {t:'正常现象，不用管',c:false,e:'全表扫描会随数据增长越来越慢，必须优化。'}
+    ]},
+    {q:'加了索引还是慢，EXPLAIN 显示索引没生效，可能原因？',opts:[
+      {t:'索引列上用了函数/运算、隐式类型转换、或 LIKE 前导通配符',c:true,e:'正确！常见索引失效：WHERE DATE(create_time)=...、WHERE id='1'（字符串转数字）、LIKE '%abc'。改写 SQL 避免这些模式。'},
+      {t:'索引建错了表',c:false,e:'索引不会建错表，检查是否在正确的列上。'},
+      {t:'MySQL 不支持该索引类型',c:false,e:'普通 B-tree 索引都支持，除非是特殊类型。'},
+      {t:'需要重启 MySQL 生效',c:false,e:'索引创建后立即生效，不需要重启。'}
+    ]},
+    {q:'慢查询优化后，连接数还是经常满（Too many connections），怎么处理？',opts:[
+      {t:'检查连接池配置、空闲连接超时、长事务，合理设置 max_connections 和 wait_timeout',c:true,e:'正确！连接满通常是：连接池过大、空闲连接不释放（wait_timeout 太长）、长事务占用连接。调小 wait_timeout、优化连接池 maxActive、监控长事务。'},
+      {t:'无限调大 max_connections',c:false,e:'连接数过大消耗内存，可能导致 OOM，需要合理设置。'},
+      {t:'定时重启 MySQL',c:false,e:'重启是临时缓解，根因还在。'},
+      {t:'关闭部分业务',c:false,e:'不是技术解决方案。'}
+    ]}
+  ]},
+  {id:'docker_exit',title:'Docker 容器异常退出',icon:'🔵',difficulty:'入门',color:'#38bdf8',desc:'Docker 容器启动后立即退出，服务不可用，如何排查？',steps:[
+    {q:'容器启动后立即退出，第一步看什么？',opts:[
+      {t:'docker logs 查看容器日志，docker inspect 看退出码',c:true,e:'正确！docker logs <容器名> 看应用报错，docker inspect -f '{{.State.ExitCode}}' 看退出码（0=正常退出，1=应用错误，137=OOM被kill，143=收到SIGTERM）。'},
+      {t:'删除容器重建',c:false,e:'重建前先看日志，否则同样的问题会复现。'},
+      {t:'重启 Docker 服务',c:false,e:'Docker 服务正常的话重启没用。'},
+      {t:'换个镜像',c:false,e:'没定位问题前换镜像是盲目操作。'}
+    ]},
+    {q:'退出码 137，说明什么？',opts:[
+      {t:'容器因 OOM（内存溢出）被系统 kill',c:true,e:'正确！137 = 128 + 9(SIGKILL)，通常是内存超限。检查 docker run --memory 限制和宿主机内存，优化应用内存使用或增加限制。'},
+      {t:'应用正常退出',c:false,e:'正常退出是 0。'},
+      {t:'应用代码报错',c:false,e:'代码报错通常是 1。'},
+      {t:'Docker 服务挂了',c:false,e:'Docker 服务挂了容器不会有退出码。'}
+    ]},
+    {q:'容器日志显示 nohup: failed to run command，如何修复？',opts:[
+      {t:'检查 Dockerfile 的 CMD/ENTRYPOINT 命令路径和权限，确保可执行文件存在',c:true,e:'正确！常见原因：命令路径错误、文件没有执行权限、Windows 换行符导致脚本无法执行。用 docker run -it <镜像> sh 进入容器手动执行命令排查。'},
+      {t:'重新拉取镜像',c:false,e:'镜像本身没问题，是启动命令的问题。'},
+      {t:'增加容器内存',c:false,e:'这不是内存问题。'},
+      {t:'更换基础镜像',c:false,e:'先确认命令是否正确，不要急着换镜像。'}
+    ]}
+  ]},
+  {id:'k8s_crashloop',title:'K8s Pod CrashLoopBackOff',icon:'🟣',difficulty:'进阶',color:'#a78bfa',desc:'Kubernetes Pod 反复重启，状态 CrashLoopBackOff，如何定位根因？',steps:[
+    {q:'Pod 处于 CrashLoopBackOff，第一步执行什么？',opts:[
+      {t:'kubectl describe pod 看 Events 和 kubectl logs 看容器日志',c:true,e:'正确！kubectl describe pod <name> 看 Events（OOMKilled / Error / CrashLoopBackOff 原因），kubectl logs <name> --previous 看上一次崩溃的日志。'},
+      {t:'删除 Pod 让它重建',c:false,e:'删除前先看日志和事件，否则丢失排查现场。'},
+      {t:'重启 Node 节点',c:false,e:'节点重启影响大，先定位 Pod 问题。'},
+      {t:'升级 Kubernetes 版本',c:false,e:'版本升级不是应急手段。'}
+    ]},
+    {q:'describe 显示 Reason: OOMKilled，说明什么？',opts:[
+      {t:'容器内存使用超过 resources.limits.memory，被内核 kill',c:true,e:'正确！OOMKilled = 容器内存超限。检查应用是否有内存泄漏，适当调大 limits.memory，或优化代码。注意 limits 不能超过节点可分配内存。'},
+      {t:'CPU 不足',c:false,e:'CPU 不足是 CPUThrottling，不是 OOMKilled。'},
+      {t:'磁盘满了',c:false,e:'磁盘满是 ImagePullBackOff 或 Evicted。'},
+      {t:'网络不通',c:false,e:'网络问题不会导致 OOMKilled。'}
+    ]},
+    {q:'日志显示配置文件找不到，但 ConfigMap 已创建，可能原因？',opts:[
+      {t:'volumeMount 路径错误、ConfigMap name 不匹配、或 key 名不对',c:true,e:'正确！检查 deployment.yaml 中 volumes.configMap.name 是否和 ConfigMap 名一致，volumeMount.mountPath 是否正确，items.key 是否对应 ConfigMap 中的 key。'},
+      {t:'ConfigMap 太大',c:false,e:'ConfigMap 限制 1MB，但不会报找不到。'},
+      {t:'需要重启 kubelet',c:false,e:'kubelet 不需要重启，配置是实时挂载的。'},
+      {t:'命名空间不对',c:false,e:'命名空间不对会报 ConfigMap not found，需要确认。'}
+    ]},
+    {q:'liveness 探针失败导致反复重启，但应用实际正常，怎么处理？',opts:[
+      {t:'调整探针的 initialDelaySeconds / periodSeconds / failureThreshold，或检查探针端点是否正确',c:true,e:'正确！常见原因：应用启动慢但 initialDelaySeconds 太短、探针端点路径错误、探针超时时间太短。合理设置：initialDelaySeconds 略大于启动时间，failureThreshold >= 3。'},
+      {t:'删除 liveness 探针',c:false,e:'探针是健康检查保障，不应该删除，应该合理配置。'},
+      {t:'增加副本数',c:false,e:'副本数不影响单个 Pod 的探针检查。'},
+      {t:'换个节点调度',c:false,e:'节点不影响应用内部探针结果。'}
+    ]}
+  ]},
+  {id:'dns_fail',title:'DNS 解析失败',icon:'🟢',difficulty:'入门',color:'#4ade80',desc:'服务器无法解析域名，ping 域名失败但 ping IP 正常，如何排查？',steps:[
+    {q:'域名解析失败但 IP 能通，首先检查什么？',opts:[
+      {t:'/etc/resolv.conf 中的 DNS 服务器配置',c:true,e:'正确！cat /etc/resolv.conf 看 nameserver 是否正确。用 nslookup/dig 测试指定 DNS 服务器是否能解析。常见问题：DNS 服务器地址错了、DNS 服务挂了。'},
+      {t:'检查网络是否连通',c:false,e:'IP 能通说明网络正常，是 DNS 解析问题。'},
+      {t:'重启网卡',c:false,e:'网卡正常，重启不能解决 DNS 配置问题。'},
+      {t:'修改 hosts 文件',c:false,e:'改 hosts 是临时绕过，不是根本解决方案。'}
+    ]},
+    {q:'resolv.conf 配置正确但解析超时，可能原因？',opts:[
+      {t:'防火墙拦截了 DNS 53 端口（UDP/TCP），或 DNS 服务器本身故障',c:true,e:'正确！检查 iptables/安全组是否放行 53 端口 UDP。用 dig @8.8.8.8 测试公共 DNS，如果公共 DNS 能解析说明是配置的 DNS 服务器挂了。'},
+      {t:'域名过期了',c:false,e:'域名过期是返回 NXDOMAIN，不是超时。'},
+      {t:'服务器内存不足',c:false,e:'内存不足不影响 DNS 解析。'},
+      {t:'DNS 缓存满了',c:false,e:'缓存满不会导致超时。'}
+    ]},
+    {q:'部分域名能解析、部分不能，可能是？',opts:[
+      {t:'DNS 服务器转发/递归有问题，或域名 DNS 记录配置错误',c:true,e:'正确！用 dig +trace 跟踪完整解析链路，看是哪一级失败。可能是本地 DNS 转发器故障，或目标域名的 NS 记录/A 记录配置错误。'},
+      {t:'服务器中毒了',c:false,e:'不要无端猜测，先看解析链路。'},
+      {t:'浏览器缓存问题',c:false,e:'服务器端解析和浏览器无关。'},
+      {t:'需要重启服务器',c:false,e:'重启不能解决 DNS 记录或转发问题。'}
+    ]}
   ]}
 ];
 

@@ -39,10 +39,10 @@ func TestUDPPortListeningIPv6(t *testing.T) {
 func TestLocalAddrPort(t *testing.T) {
 	cases := map[string]string{
 		"0.0.0.0:7777": "7777",
-		"[::]:7777":     "7777",
-		"127.0.0.1:80":  "80",
-		"[::]:*":        "*",
-		"garbage":       "",
+		"[::]:7777":    "7777",
+		"127.0.0.1:80": "80",
+		"[::]:*":       "*",
+		"garbage":      "",
 	}
 	for in, want := range cases {
 		if got := localAddrPort(in); got != want {

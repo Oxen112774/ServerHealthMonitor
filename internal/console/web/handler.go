@@ -57,14 +57,15 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/console/api/change-password", securityHeaders(h.authWrap(maxBodySize(4096,
 		h.rateLimit(h.handleChangePasswordAPI, h.apiLimiter)))))
 
-	// Protected pages
+	// Protected pages — 页面级权限必须与对应 API 级权限一致，
+	// 否则低权限用户仍能渲染无权访问的页面骨架。
 	mux.HandleFunc("/console/", securityHeaders(h.authWrap(h.handleConsolePage)))
-	mux.HandleFunc("/console/dashboard", securityHeaders(h.authWrap(h.handleDashboardPage)))
-	mux.HandleFunc("/console/servers", securityHeaders(h.authWrap(h.handleServersPage)))
+	mux.HandleFunc("/console/dashboard", securityHeaders(h.permissionWrap(auth.PermissionViewDashboard, h.handleDashboardPage)))
+	mux.HandleFunc("/console/servers", securityHeaders(h.permissionWrap(auth.PermissionViewServers, h.handleServersPage)))
 	mux.HandleFunc("/console/users", securityHeaders(h.permissionWrap(auth.PermissionManageUsers, h.handleUsersPage)))
 	mux.HandleFunc("/console/audit", securityHeaders(h.permissionWrap(auth.PermissionViewAudit, h.handleAuditPage)))
-	mux.HandleFunc("/console/tools", securityHeaders(h.authWrap(h.handleToolsPage)))
-	mux.HandleFunc("/console/tickets", securityHeaders(h.authWrap(h.handleTicketsPage)))
+	mux.HandleFunc("/console/tools", securityHeaders(h.permissionWrap(auth.PermissionViewDiagnostics, h.handleToolsPage)))
+	mux.HandleFunc("/console/tickets", securityHeaders(h.permissionWrap(auth.PermissionCreateTickets, h.handleTicketsPage)))
 	mux.HandleFunc("/console/api/diagnostics", securityHeaders(h.permissionWrap(auth.PermissionViewDiagnostics, h.rateLimit(h.handleDiagnosticsAPI, h.apiLimiter))))
 
 	// Protected APIs (rate-limited)

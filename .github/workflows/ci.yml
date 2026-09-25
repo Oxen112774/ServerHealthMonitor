@@ -3,16 +3,23 @@ name: Build & Deploy
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
+
+# Least privilege: the build/test jobs only need to read the repository.
+permissions:
+  contents: read
 
 env:
   GO_VERSION: '1.23'
-  BINARY_NAME: 'server-health-monitor-agent'
+  AGENT_BINARY: 'server-health-monitor-agent'
+  CONSOLE_BINARY: 'server-health-monitor-console'
 
 jobs:
-  # ---------- Build Go binary ----------
+  # ---------- Verify + build Go binaries ----------
   build:
-    name: Build Go Agent
+    name: Verify & Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,32 +43,59 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Build (linux/amd64)
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未通过 gofmt，请运行 gofmt -w ./cmd ./internal"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build agent (linux/amd64)
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -ldflags="-s -w -X main.version=${{ github.sha }} -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o build/${{ env.BINARY_NAME }} \
+            -o build/${{ env.AGENT_BINARY }} \
             ./cmd/agent
 
-      - name: Verify binary
+      - name: Build console (linux/amd64)
         run: |
-          file build/${{ env.BINARY_NAME }}
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w -X main.version=${{ github.sha }} -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o build/${{ env.CONSOLE_BINARY }} \
+            ./cmd/console
+
+      - name: Verify binaries
+        run: |
+          file build/${{ env.AGENT_BINARY }}
+          file build/${{ env.CONSOLE_BINARY }}
           ls -lh build/
 
-      - name: Upload build artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: server-health-monitor-agent
-          path: build/${{ env.BINARY_NAME }}
+          name: server-health-monitor-linux-amd64
+          path: |
+            build/${{ env.AGENT_BINARY }}
+            build/${{ env.CONSOLE_BINARY }}
           retention-days: 30
 
-  # ---------- Deploy to server ----------
+  # ---------- Deploy agent to server ----------
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/main'
     environment: production
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -70,7 +104,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: server-health-monitor-agent
+          name: server-health-monitor-linux-amd64
           path: build/
 
       - name: Set up Python
@@ -89,13 +123,13 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
-          chmod +x build/${{ env.BINARY_NAME }}
+          chmod +x build/${{ env.AGENT_BINARY }}
           python deploy/deploy.py \
             --host "$DEPLOY_HOST" \
             --port "$DEPLOY_PORT" \
             --user "$DEPLOY_USER" \
             --key "$DEPLOY_KEY" \
-            --binary "build/${{ env.BINARY_NAME }}"
+            --binary "build/${{ env.AGENT_BINARY }}"
 
       - name: Verify deployment
         run: |

@@ -137,6 +137,30 @@ def find_ssh():
     return None
 
 
+# 注入到 HTML 外壳中的脚本：把本地令牌写进页面，并劫持 window.fetch，
+# 让所有同源请求自动带上 X-Local-Token。这样无需改动每一个调用点，
+# 也能覆盖将来新增的 fetch 调用。
+_TOKEN_INJECT_SNIPPET = (
+    "<script>(function(){var T=%s;"
+    "if(window.__shtTokenInstalled){return}window.__shtTokenInstalled=1;"
+    "var origin=window.location.origin;var origFetch=window.fetch;"
+    "window.fetch=function(input,init){"
+    "try{var u=(typeof input==='string')?input:(input&&input.url)||'';"
+    "if(u.lastIndexOf(origin,0)===0||u.charAt(0)==='/'){"
+    "init=init||{};var h=new Headers(init.headers||{});"
+    "h.set('X-Local-Token',T);init.headers=h;}}catch(e){}"
+    "return origFetch.call(this,input,init);};})();</script>"
+)
+
+# HTML 外壳自身不校验令牌（否则前端拿不到令牌），但禁止被跨站页面嵌入。
+_HTML_SECURITY_HEADERS = {
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "frame-ancestors 'self'",
+    "Referrer-Policy": "no-referrer",
+}
+
+
 class Backend:
     def __init__(self):
         self._local_api_token = secrets.token_urlsafe(32)
@@ -225,6 +249,22 @@ class Backend:
         cfg = dict(self.config)
         cfg["auth_pass"] = ""  # 密码不回传前端
         return cfg
+
+    def inject_local_token(self, html):
+        """把本地令牌注入 HTML 外壳，供前端自动附加到同源 API 请求。"""
+        snippet = _TOKEN_INJECT_SNIPPET % json.dumps(self._local_api_token)
+        if "<head>" in html:
+            return html.replace("<head>", "<head>" + snippet, 1)
+        return snippet + html
+
+    def check_local_token(self, token):
+        if not isinstance(token, str) or not token:
+            return False
+        try:
+            return secrets.compare_digest(
+                token.encode("utf-8"), self._local_api_token.encode("utf-8"))
+        except (UnicodeError, AttributeError):
+            return False
 
     # ------------------------------------------------------------------ 日志
     def log(self, level, msg):
@@ -505,14 +545,20 @@ class Backend:
         os.makedirs(self.console_dir(), exist_ok=True)
         if self._port_open("127.0.0.1", self.config["console_port"]):
             return {"success": False, "message": f"端口冲突：管理控制台端口 {self.config['console_port']} 已被占用，请修改端口。", "category": "port"}
+        # 桌面外壳用 iframe 内嵌控制台，需把本地外壳来源加入 CSP frame-ancestors，
+        # 否则控制台响应头里的 X-Frame-Options: DENY 会阻止内嵌。
         args = [
             exe,
             "--host", "127.0.0.1",
             "--port", str(self.config["console_port"]),
             "--data", self.console_dir(),
+            "--frame-ancestor", f"http://127.0.0.1:{self.config['local_port']}",
         ]
+        # 凭据改用环境变量传递：argv 可被本机其他进程读取，env 不会出现在进程列表中。
+        child_env = dict(os.environ)
         if admin_user and admin_pass:
-            args += ["--admin-user", admin_user, "--admin-pass", admin_pass]
+            child_env["CONSOLE_ADMIN_USER"] = str(admin_user)
+            child_env["CONSOLE_ADMIN_PASS"] = str(admin_pass)
             self._console_secrets.add(str(admin_pass))
 
         self.log("info", f"正在启动管理控制台：http://127.0.0.1:{self.config['console_port']}/console/")
@@ -520,6 +566,7 @@ class Backend:
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             proc = subprocess.Popen(
                 args,
+                env=child_env,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
                 bufsize=1, creationflags=creationflags,
@@ -633,7 +680,7 @@ class Backend:
             def log_message(self, fmt, *args):
                 pass  # 静默默认访问日志
 
-            def _send(self, body, ctype="application/json; charset=utf-8", status=200):
+            def _send(self, body, ctype="application/json; charset=utf-8", status=200, extra_headers=None):
                 try:
                     if isinstance(body, bytes):
                         data = body
@@ -645,10 +692,20 @@ class Backend:
                     self.send_header("Content-Type", ctype)
                     self.send_header("Content-Length", str(len(data)))
                     self.send_header("Cache-Control", "no-store")
+                    for name, value in (extra_headers or {}).items():
+                        self.send_header(name, value)
                     self.end_headers()
                     self.wfile.write(data)
                 except OSError:
                     pass  # 客户端提前断开时静默忽略
+
+            def _send_html(self, html):
+                """HTML 外壳：注入本地令牌 + 禁止被跨站嵌入。"""
+                self._send(
+                    backend.inject_local_token(html),
+                    "text/html; charset=utf-8",
+                    extra_headers=dict(_HTML_SECURITY_HEADERS),
+                )
 
             def _read_body(self):
                 try:
@@ -663,32 +720,36 @@ class Backend:
                     return {}
 
             def _authorize_local_request(self):
+                # DNS-rebinding 防护：只接受指向本机监听端口的 Host
                 host = self.headers.get("Host", "")
-                if not (host == f"127.0.0.1:{backend.config['local_port']}" or
-                        host == f"localhost:{backend.config['local_port']}"):
+                if host not in (
+                    f"127.0.0.1:{backend.config['local_port']}",
+                    f"localhost:{backend.config['local_port']}",
+                ):
                     self._send({"error": "invalid host"}, status=403)
                     return False
-                token = self.headers.get("X-Local-Token", "")
-                origin = self.headers.get("Origin", "")
-                expected_origin = {
-                    f"http://127.0.0.1:{backend.config['local_port']}",
-                    f"http://localhost:{backend.config['local_port']}",
-                }
-                if token != backend._local_api_token and origin not in expected_origin:
+                # 所有 JSON API（含 GET）都必须携带本地令牌。
+                # 令牌由 HTML 外壳中的注入脚本自动附加到同源请求。
+                if not backend.check_local_token(self.headers.get("X-Local-Token", "")):
                     self._send({"error": "local authorization required"}, status=403)
-                    return False
-                if origin and origin not in expected_origin:
-                    self._send({"error": "invalid origin"}, status=403)
                     return False
                 return True
 
             def do_GET(self):
                 path = urlparse(self.path).path
+                # HTML 外壳不校验令牌（前端需要先拿到令牌），
+                # 但会注入令牌脚本并设置禁止跨站嵌入的安全响应头。
                 if path in ("/", "/index.html", "/shell"):
-                    self._send(ui.SHELL_HTML, "text/html; charset=utf-8")
-                elif path == "/monitor":
-                    self._send(DASHBOARD_HTML, "text/html; charset=utf-8")
-                elif path == "/api/status":
+                    self._send_html(ui.SHELL_HTML)
+                    return
+                if path == "/monitor":
+                    self._send_html(DASHBOARD_HTML)
+                    return
+
+                if not self._authorize_local_request():
+                    return
+
+                if path == "/api/status":
                     self._proxy("/api/status", 200)
                 elif path == "/api/health":
                     self._proxy("/api/health", 200)

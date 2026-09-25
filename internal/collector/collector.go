@@ -47,44 +47,44 @@ type TCPStats struct {
 
 // ProcessInfo holds a single process snapshot for Top-N display.
 type ProcessInfo struct {
-	PID       int     `json:"pid"`
-	Name      string  `json:"name"`
+	PID        int     `json:"pid"`
+	Name       string  `json:"name"`
 	CPUPercent float64 `json:"cpu_percent"`
-	MemoryKB  uint64  `json:"memory_kb"`
-	User      string  `json:"user"`
+	MemoryKB   uint64  `json:"memory_kb"`
+	User       string  `json:"user"`
 }
 
 // Metrics holds a snapshot of system metrics.
 type Metrics struct {
-	Timestamp     string  `json:"timestamp"`
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemoryTotal   uint64  `json:"memory_total"`
-	MemoryUsed    uint64  `json:"memory_used"`
-	MemoryAvail   uint64  `json:"memory_available"`
-	MemoryPercent float64 `json:"memory_percent"`
-	SwapTotal     uint64  `json:"swap_total"`
-	SwapUsed      uint64  `json:"swap_used"`
-	SwapPercent   float64 `json:"swap_percent"`
-	DiskTotal     uint64  `json:"disk_total"`
-	DiskUsed      uint64  `json:"disk_used"`
-	DiskFree      uint64  `json:"disk_free"`
-	DiskPercent   float64 `json:"disk_percent"`
-	Load1         float64 `json:"load_1"`
-	Load5         float64 `json:"load_5"`
-	Load15        float64 `json:"load_15"`
-	CPUCount      int     `json:"cpu_count"`
-	Uptime        int     `json:"uptime"`
-	Hostname      string  `json:"hostname"`
-	Network       string  `json:"network"` // reachable/unreachable/disabled
-	ProcessCount  int     `json:"process_count"`
-	FDUsed        int     `json:"fd_used"`
-	FDMax         int     `json:"fd_max"`
-	TCP           TCPStats `json:"tcp"`
-	NetInterfaces []NetIO `json:"net_interfaces"`
+	Timestamp     string        `json:"timestamp"`
+	CPUPercent    float64       `json:"cpu_percent"`
+	MemoryTotal   uint64        `json:"memory_total"`
+	MemoryUsed    uint64        `json:"memory_used"`
+	MemoryAvail   uint64        `json:"memory_available"`
+	MemoryPercent float64       `json:"memory_percent"`
+	SwapTotal     uint64        `json:"swap_total"`
+	SwapUsed      uint64        `json:"swap_used"`
+	SwapPercent   float64       `json:"swap_percent"`
+	DiskTotal     uint64        `json:"disk_total"`
+	DiskUsed      uint64        `json:"disk_used"`
+	DiskFree      uint64        `json:"disk_free"`
+	DiskPercent   float64       `json:"disk_percent"`
+	Load1         float64       `json:"load_1"`
+	Load5         float64       `json:"load_5"`
+	Load15        float64       `json:"load_15"`
+	CPUCount      int           `json:"cpu_count"`
+	Uptime        int           `json:"uptime"`
+	Hostname      string        `json:"hostname"`
+	Network       string        `json:"network"` // reachable/unreachable/disabled
+	ProcessCount  int           `json:"process_count"`
+	FDUsed        int           `json:"fd_used"`
+	FDMax         int           `json:"fd_max"`
+	TCP           TCPStats      `json:"tcp"`
+	NetInterfaces []NetIO       `json:"net_interfaces"`
 	TopProcesses  []ProcessInfo `json:"top_processes"`
-	OS            string  `json:"os"`
-	Kernel        string  `json:"kernel"`
-	Arch          string  `json:"arch"`
+	OS            string        `json:"os"`
+	Kernel        string        `json:"kernel"`
+	Arch          string        `json:"arch"`
 }
 
 // Instance represents one SCP:SL service instance.
@@ -665,11 +665,11 @@ func readTopProcesses(n int) []ProcessInfo {
 		rss, _ := strconv.ParseUint(fields[3], 10, 64)
 		name := fields[4]
 		procs = append(procs, ProcessInfo{
-			PID:       pid,
-			Name:      name,
+			PID:        pid,
+			Name:       name,
 			CPUPercent: round(cpu, 1),
-			MemoryKB:  rss,
-			User:      user,
+			MemoryKB:   rss,
+			User:       user,
 		})
 	}
 	return procs

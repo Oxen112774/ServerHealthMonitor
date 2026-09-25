@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -73,9 +74,55 @@ func (rl *rateLimiter) cleanup() {
 
 // --- Security Headers Middleware ---
 
+// frameAncestors lists the extra origins allowed to embed console pages in a
+// frame (e.g. the local desktop shell). Empty means framing is denied entirely.
+var (
+	frameAncestorsMu sync.RWMutex
+	frameAncestors   []string
+)
+
+// SetFrameAncestors configures which origins may frame console pages.
+// Entries must be plain scheme://host[:port] origins; anything else is rejected
+// so the value cannot be used to inject extra CSP directives.
+// Call it before the HTTP server starts serving requests.
+func SetFrameAncestors(origins []string) []string {
+	valid := make([]string, 0, len(origins))
+	for _, raw := range origins {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			continue
+		}
+		if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			continue
+		}
+		valid = append(valid, u.Scheme+"://"+u.Host)
+	}
+	frameAncestorsMu.Lock()
+	frameAncestors = valid
+	frameAncestorsMu.Unlock()
+	return valid
+}
+
+func frameAncestorsSnapshot() []string {
+	frameAncestorsMu.RLock()
+	defer frameAncestorsMu.RUnlock()
+	return append([]string(nil), frameAncestors...)
+}
+
 func securityHeaders(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// CSP - Content Security Policy
+		ancestors := frameAncestorsSnapshot()
+		framePolicy := "frame-ancestors 'none'; "
+		if len(ancestors) > 0 {
+			// 'self' keeps console-to-console framing working; the extra
+			// origins are limited to trusted local callers.
+			framePolicy = "frame-ancestors 'self' " + strings.Join(ancestors, " ") + "; "
+		}
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; "+
 				"script-src 'self' 'unsafe-inline'; "+
@@ -83,13 +130,19 @@ func securityHeaders(next http.HandlerFunc) http.HandlerFunc {
 				"img-src 'self' data: https:; "+
 				"font-src 'self' data:; "+
 				"connect-src 'self'; "+
-				"frame-ancestors 'none'; "+
+				framePolicy+
 				"base-uri 'self'; "+
 				"form-action 'self'")
 
 		// Other security headers
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
+		// X-Frame-Options cannot express a list of allowed origins, so when
+		// specific frame ancestors are configured CSP governs framing instead.
+		if len(ancestors) == 0 {
+			w.Header().Set("X-Frame-Options", "DENY")
+		} else {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		}
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
