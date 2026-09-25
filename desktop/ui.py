@@ -1,1438 +1,547 @@
+# -*- coding: utf-8 -*-
 """
-Server Health Monitor - 桌面应用外壳（全面重构版 v2）
-顶部导航 + 液态玻璃 + 命令词典 + 模拟实战 + 运维工具箱 + 鼠标跟随动效
+Server Health Monitor v5.0 - 桌面端 UI
+聚焦服务器运维一体智能插件
 """
 
-SHELL_HTML = r'''<!DOCTYPE html>
+SHELL_HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Server Health Monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Server Health Monitor v5.0</title>
 <style>
 :root{
-  --bg-0:#060912;--bg-1:#0a0f1c;--bg-2:#0e1525;
-  --glass:rgba(255,255,255,0.045);--glass-2:rgba(255,255,255,0.07);--glass-3:rgba(255,255,255,0.1);
-  --border:rgba(255,255,255,0.08);--border-2:rgba(255,255,255,0.14);--border-3:rgba(255,255,255,0.2);
-  --text:#eef2fa;--text-2:#9aa8c0;--text-3:#5c6a82;
-  --accent:#6c8cff;--accent-2:#38d9f5;--accent-3:#a78bfa;
+  --bg-0:#0a0e1a;--bg-1:#0f1525;--bg-2:#161d33;
+  --glass:rgba(255,255,255,0.04);--glass-2:rgba(255,255,255,0.07);
+  --border:rgba(255,255,255,0.08);--border-2:rgba(255,255,255,0.12);
+  --text:#e8ecf4;--text-2:#9aa5bd;--text-3:#5a6480;
+  --accent:#6c8cff;--accent-2:#38d9f5;--accent-3:#8b5cf6;
   --green:#4ade80;--amber:#fbbf24;--red:#f87171;--cyan:#22d3ee;
-  --radius:18px;--radius-sm:12px;--radius-xs:8px;
-  --shadow:0 8px 32px rgba(0,0,0,0.35);--shadow-lg:0 24px 64px rgba(0,0,0,0.5);
-  --ease:cubic-bezier(0.4,0,0.2,1);--ease-spring:cubic-bezier(0.34,1.56,0.64,1);
-  --font:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
-  --mono:"Cascadia Code","Fira Code","JetBrains Mono",Consolas,monospace;
-  --mx:50%;--my:30%;
+  --ease:cubic-bezier(0.4,0,0.2,1);
+  --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --mono:'Cascadia Code','Consolas',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
-body{font-family:var(--font);background:var(--bg-0);color:var(--text);-webkit-font-smoothing:antialiased;position:relative}
-body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 900px 600px at var(--mx) var(--my),rgba(108,140,255,0.10),transparent 55%),radial-gradient(ellipse 700px 500px at 85% 100%,rgba(56,217,245,0.07),transparent 55%),radial-gradient(ellipse 500px 400px at 10% 90%,rgba(167,139,250,0.06),transparent 55%),linear-gradient(180deg,#060912 0%,#080d18 50%,#060912 100%);transition:background 0.3s var(--ease)}
-body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at center,black 20%,transparent 75%)}
-::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--border-3)}
+body{
+  font-family:var(--font);background:var(--bg-0);color:var(--text);
+  background:radial-gradient(ellipse at 20% 0%,rgba(108,140,255,0.08),transparent 50%),
+             radial-gradient(ellipse at 80% 100%,rgba(56,217,245,0.06),transparent 50%),
+             var(--bg-0);
+}
+#particles{position:fixed;inset:0;z-index:0;pointer-events:none}
+#app{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;opacity:0;transition:opacity 0.6s var(--ease)}
+#app.ready{opacity:1}
 
-/* Splash */
-#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:var(--bg-0);transition:opacity 0.6s var(--ease),visibility 0.6s}
+/* ===== Splash ===== */
+#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:var(--bg-0);transition:opacity 0.8s var(--ease),visibility 0.8s}
 #splash.gone{opacity:0;visibility:hidden}
-.splash-logo{width:72px;height:72px;border-radius:22px;position:relative;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff;box-shadow:0 0 50px rgba(108,140,255,0.4),0 0 100px rgba(56,217,245,0.2);animation:splashPulse 2s var(--ease) infinite}
-.splash-logo::after{content:"";position:absolute;inset:-4px;border-radius:24px;border:1.5px solid rgba(108,140,255,0.3);animation:splashRing 2s var(--ease) infinite}
-@keyframes splashPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-@keyframes splashRing{0%{transform:scale(1);opacity:1}100%{transform:scale(1.4);opacity:0}}
-.splash-bar{width:180px;height:3px;background:var(--glass-2);border-radius:3px;overflow:hidden}
-.splash-bar::after{content:"";display:block;width:35%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));animation:splashSlide 1.1s var(--ease) infinite}
+.splash-logo{width:80px;height:80px;border-radius:24px;position:relative;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#fff;box-shadow:0 0 40px rgba(108,140,255,0.4);animation:splashPulse 2s ease-in-out infinite}
+.splash-logo::before{content:"";position:absolute;inset:-6px;border-radius:28px;border:2px solid rgba(108,140,255,0.3);animation:splashRing 2s ease-out infinite}
+.splash-logo::after{content:"";position:absolute;inset:-12px;border-radius:32px;border:1px solid rgba(56,217,245,0.2);animation:splashRing 2s ease-out infinite 0.5s}
+@keyframes splashPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes splashRing{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}
+.splash-bar{width:200px;height:3px;background:var(--glass-2);border-radius:3px;overflow:hidden}
+.splash-bar::after{content:"";display:block;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));animation:splashSlide 1.2s ease-in-out infinite}
 @keyframes splashSlide{0%{transform:translateX(-120%)}100%{transform:translateX(380%)}}
-.splash-text{font-size:11px;letter-spacing:3px;color:var(--text-3);text-transform:uppercase}
+.splash-text{font-size:11px;letter-spacing:4px;color:var(--text-3);text-transform:uppercase}
+.splash-ver{font-size:10px;color:var(--accent);font-family:var(--mono);letter-spacing:1px}
+.splash-error{display:none;font-size:11px;color:var(--red);max-width:360px;text-align:center;line-height:1.6}
+.splash-skip{display:none;margin-top:8px;padding:6px 16px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:11px;cursor:pointer;transition:all 0.2s}
+.splash-skip:hover{color:var(--text);border-color:var(--accent)}
 
-/* App Shell */
-#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;opacity:0;transform:translateY(12px);transition:all 0.6s var(--ease)}
-#app.ready{opacity:1;transform:translateY(0)}
-
-/* Top Nav */
-.topnav{height:64px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 20px;gap:16px;background:rgba(10,15,28,0.6);backdrop-filter:blur(24px) saturate(1.4);border-bottom:1px solid var(--border);position:relative;z-index:10}
-.brand{display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none;flex-shrink:0}
-.brand-mark{width:38px;height:38px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;box-shadow:0 4px 16px rgba(108,140,255,0.35);position:relative}
-.brand-mark::after{content:"";position:absolute;inset:-2px;border-radius:13px;border:1px solid rgba(108,140,255,0.25)}
+/* ===== Top Nav ===== */
+.topnav{display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--glass);backdrop-filter:blur(20px);position:relative;z-index:10}
+.brand{display:flex;align-items:center;gap:12px;cursor:pointer;flex-shrink:0}
+.brand-mark{width:40px;height:40px;border-radius:13px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff;box-shadow:0 4px 20px rgba(108,140,255,0.35);position:relative;transition:transform 0.3s var(--ease)}
+.brand:hover .brand-mark{transform:rotate(-5deg) scale(1.05)}
+.brand-mark::after{content:"";position:absolute;inset:-2px;border-radius:14px;border:1px solid rgba(108,140,255,0.25)}
 .brand-name{font-size:15px;font-weight:700;letter-spacing:0.3px}
 .brand-sub{font-size:10px;color:var(--text-3);letter-spacing:2px;text-transform:uppercase;margin-top:1px}
-.nav-tabs{display:flex;gap:3px;padding:4px;background:var(--glass);border:1px solid var(--border);border-radius:14px;backdrop-filter:blur(12px);overflow-x:auto;scrollbar-width:none;scroll-behavior:smooth;flex:1;min-width:0}
-.nav-tabs::-webkit-scrollbar{display:none}
-.nav-wrapper{display:flex;align-items:center;gap:4px;flex:1;min-width:0;position:relative}
-.nav-arrow{width:28px;height:28px;border-radius:9px;border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(8px);color:var(--text-2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.25s var(--ease);flex-shrink:0;opacity:0;pointer-events:none}
-.nav-arrow.show{opacity:1;pointer-events:auto}
-.nav-arrow:hover{color:var(--text);background:var(--glass-2);border-color:rgba(108,140,255,0.3)}
-.nav-arrow svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.nav-fade-left,.nav-fade-right{position:absolute;top:4px;bottom:4px;width:24px;pointer-events:none;z-index:2;opacity:0;transition:opacity 0.3s}
-.nav-fade-left{left:4px;background:linear-gradient(90deg,var(--glass),transparent);border-radius:14px 0 0 14px}
-.nav-fade-right{right:4px;background:linear-gradient(-90deg,var(--glass),transparent);border-radius:0 14px 14px 0}
-.nav-fade-left.show,.nav-fade-right.show{opacity:1}
-.nav-tab{display:flex;align-items:center;gap:6px;padding:8px 14px;border:none;border-radius:10px;background:transparent;color:var(--text-2);font-size:12.5px;font-weight:500;font-family:var(--font);cursor:pointer;transition:all 0.25s var(--ease);position:relative;white-space:nowrap;flex-shrink:0}
+.nav-tabs{display:flex;gap:4px;padding:4px;background:var(--glass);border:1px solid var(--border);border-radius:14px;backdrop-filter:blur(12px);margin-left:auto}
+.nav-tab{display:flex;align-items:center;gap:7px;padding:9px 16px;border:none;border-radius:10px;background:transparent;color:var(--text-2);font-size:12.5px;font-weight:500;font-family:var(--font);cursor:pointer;transition:all 0.3s var(--ease);position:relative;white-space:nowrap}
 .nav-tab svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.nav-tab:hover{color:var(--text);background:var(--glass-2)}
-.nav-tab.active{color:#fff;background:linear-gradient(135deg,rgba(108,140,255,0.25),rgba(56,217,245,0.15));box-shadow:0 2px 12px rgba(108,140,255,0.2),inset 0 0 0 1px rgba(108,140,255,0.3)}
+.nav-tab:hover{color:var(--text);background:var(--glass-2);transform:translateY(-1px)}
+.nav-tab.active{color:#fff;background:linear-gradient(135deg,rgba(108,140,255,0.3),rgba(56,217,245,0.15));box-shadow:0 2px 16px rgba(108,140,255,0.25),inset 0 0 0 1px rgba(108,140,255,0.3)}
+.nav-tab.active::before{content:"";position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);width:20px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent-2));box-shadow:0 0 8px var(--accent)}
 .status-group{display:flex;gap:8px;align-items:center;flex-shrink:0}
-.status-pill{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:20px;background:var(--glass);border:1px solid var(--border);font-size:11px;color:var(--text-2);backdrop-filter:blur(8px);transition:all 0.3s var(--ease)}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text-3);transition:all 0.3s}
-.status-dot.ok{background:var(--green);box-shadow:0 0 8px rgba(74,222,128,0.5)}
-.status-dot.warn{background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,0.5)}
-.status-dot.err{background:var(--red);box-shadow:0 0 8px rgba(248,113,113,0.5)}
+.status-pill{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;background:var(--glass);border:1px solid var(--border);font-size:11px;color:var(--text-2);backdrop-filter:blur(8px);transition:all 0.3s var(--ease)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text-3);transition:all 0.3s;position:relative}
+.status-dot.ok{background:var(--green);box-shadow:0 0 8px rgba(74,222,128,0.6)}
+.status-dot.ok::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1px solid rgba(74,222,128,0.4);animation:dotPulse 2s infinite}
+.status-dot.warn{background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,0.6)}
+.status-dot.err{background:var(--red);box-shadow:0 0 8px rgba(248,113,113,0.6)}
+@keyframes dotPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0}}
 
-/* Content */
+/* ===== Content ===== */
 .content{flex:1;position:relative;overflow:hidden}
-.pane{position:absolute;inset:0;opacity:0;visibility:hidden;transform:translateY(16px) scale(0.99);transition:all 0.4s var(--ease);overflow-y:auto;overflow-x:hidden}
+.pane{position:absolute;inset:0;opacity:0;visibility:hidden;transform:translateY(20px) scale(0.98);transition:all 0.5s var(--ease);overflow-y:auto;overflow-x:hidden;padding:24px}
 .pane.active{opacity:1;visibility:visible;transform:translateY(0) scale(1)}
-.pane-inner{padding:28px 32px;max-width:1200px;margin:0 auto}
+.pane::-webkit-scrollbar{width:6px}
+.pane::-webkit-scrollbar-track{background:transparent}
+.pane::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:3px}
 
-/* Glass Card */
-.glass{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);backdrop-filter:blur(20px) saturate(1.3);position:relative;overflow:hidden;transition:all 0.3s var(--ease)}
+/* ===== Glass Card ===== */
+.glass{background:var(--glass);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(16px);position:relative;overflow:hidden;transition:all 0.4s var(--ease)}
 .glass::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)}
-.glass:hover{border-color:var(--border-2);box-shadow:var(--shadow)}
+.glass:hover{border-color:var(--border-2);transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,0.3)}
+.glass-card{padding:20px}
 
-/* Buttons */
-.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all 0.25s var(--ease)}
-.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.btn-primary{background:linear-gradient(135deg,var(--accent),#5b7cf0);color:#fff;box-shadow:0 4px 20px rgba(108,140,255,0.35)}
-.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(108,140,255,0.45)}
-.btn-primary:active{transform:translateY(0)}
-.btn-ghost{background:var(--glass-2);color:var(--text-2);border:1px solid var(--border)}
-.btn-ghost:hover{background:var(--glass-3);color:var(--text);border-color:var(--border-2)}
-.btn-success{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff}
-.btn-danger{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}
-.btn:disabled{opacity:0.45;cursor:not-allowed;transform:none!important}
-
-/* Monitor Pane */
-.monitor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
-.stat-card{padding:18px}
-.stat-card:hover{transform:translateY(-3px)}
+/* ===== Stat Cards ===== */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px}
+.stat-card{padding:18px 20px;position:relative;overflow:hidden}
+.stat-card::after{content:"";position:absolute;top:-50%;right:-20%;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(108,140,255,0.1),transparent 70%);transition:transform 0.5s var(--ease)}
+.stat-card:hover::after{transform:scale(1.5)}
 .stat-label{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
 .stat-label .dot{width:6px;height:6px;border-radius:50%}
-.stat-value{font-size:30px;font-weight:800;font-family:var(--mono);line-height:1;letter-spacing:-1px}
-.stat-sub{font-size:11px;color:var(--text-3);margin-top:8px}
+.stat-value{font-size:32px;font-weight:800;font-family:var(--mono);line-height:1;transition:color 0.3s}
+.stat-sub{font-size:11px;color:var(--text-3);margin-top:6px}
 .stat-bar{height:4px;background:var(--glass-2);border-radius:2px;margin-top:12px;overflow:hidden}
-.stat-bar-fill{height:100%;border-radius:2px;transition:width 1s var(--ease)}
-.monitor-hero{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:18px}
-.hero-main{padding:26px}
-.hero-eyebrow{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--accent-2);font-weight:600;margin-bottom:10px}
-.hero-title{font-size:24px;font-weight:800;line-height:1.25;margin-bottom:10px;background:linear-gradient(135deg,#fff,var(--text-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hero-desc{font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:20px}
-.hero-actions{display:flex;gap:10px;flex-wrap:wrap}
-.hero-side{display:flex;flex-direction:column;gap:10px}
-.mini-stat{padding:14px 16px;display:flex;align-items:center;gap:12px}
-.mini-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
-.mini-info{flex:1;min-width:0}
-.mini-label{font-size:10.5px;color:var(--text-3)}
-.mini-value{font-size:16px;font-weight:700;font-family:var(--mono);margin-top:2px}
-.feature-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
-.feature-card{padding:18px}
-.feature-card:hover{transform:translateY(-3px);border-color:var(--accent)}
-.feature-icon{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,rgba(108,140,255,0.15),rgba(56,217,245,0.08));display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:10px;border:1px solid var(--border)}
-.feature-card h4{font-size:13.5px;font-weight:600;margin-bottom:5px}
-.feature-card p{font-size:11.5px;color:var(--text-2);line-height:1.6}
-.feature-tags{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
-.feature-tags span{padding:2px 8px;border-radius:10px;font-size:10px;background:var(--glass-2);color:var(--text-3);border:1px solid var(--border)}
+.stat-bar-fill{height:100%;border-radius:2px;transition:width 1s var(--ease);position:relative}
+.stat-bar-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);animation:barShine 2s infinite}
+@keyframes barShine{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 
-/* Monitor iframe */
-.monitor-iframe-wrap{position:fixed;inset:64px 0 0 0;z-index:5;display:none;background:var(--bg-0)}
-.monitor-iframe-wrap.show{display:block}
-#monitorFrame{width:100%;height:100%;border:none;background:var(--bg-0)}
-.monitor-close{position:absolute;top:16px;right:20px;z-index:6;width:36px;height:36px;border-radius:10px;background:var(--glass-3);border:1px solid var(--border-2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;backdrop-filter:blur(12px);transition:all 0.2s}
-.monitor-close:hover{background:var(--red);border-color:var(--red);transform:rotate(90deg)}
+/* ===== Chart ===== */
+.chart-container{padding:20px;margin-bottom:20px}
+.chart-title{font-size:14px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.chart-title .icon{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-size:11px}
+.chart-canvas{width:100%;height:200px;display:block}
+.chart-legend{display:flex;gap:20px;margin-top:12px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2)}
+.legend-dot{width:8px;height:8px;border-radius:50%}
 
-/* Console */
-.console-wrap{height:100%;display:flex;flex-direction:column}
-#consoleHost{flex:1;display:none;position:relative}
-#consoleFrame{width:100%;height:100%;border:none;background:#fff}
-.console-setup{flex:1;display:flex;align-items:center;justify-content:center;padding:40px}
+/* ===== Section Title ===== */
+.section-title{font-size:16px;font-weight:700;margin:24px 0 16px;display:flex;align-items:center;gap:10px}
+.section-title::before{content:"";width:3px;height:18px;border-radius:2px;background:linear-gradient(180deg,var(--accent),var(--accent-2))}
 
-/* Lexicon */
-.lex-header{margin-bottom:20px}
-.lex-title{font-size:22px;font-weight:800;margin-bottom:5px}
-.lex-sub{font-size:12.5px;color:var(--text-2)}
-.lex-search-row{display:flex;gap:10px;margin-bottom:16px;align-items:center}
-.lex-search{flex:1;position:relative}
-.lex-search input{width:100%;padding:12px 16px 12px 42px;border-radius:var(--radius-sm);background:var(--glass);border:1px solid var(--border);color:var(--text);font-size:13px;font-family:var(--font);outline:none;transition:all 0.3s var(--ease);backdrop-filter:blur(12px)}
-.lex-search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(108,140,255,0.15);background:var(--glass-2)}
-.lex-search input::placeholder{color:var(--text-3)}
-.lex-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:15px}
-.lex-fav-toggle{padding:11px 16px;border-radius:var(--radius-sm);background:var(--glass);border:1px solid var(--border);color:var(--text-2);cursor:pointer;font-size:12px;transition:all 0.2s;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.lex-fav-toggle.active{background:rgba(251,191,36,0.12);border-color:rgba(251,191,36,0.35);color:var(--amber)}
-.lex-cats{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
-.lex-cat{padding:7px 14px;border-radius:20px;background:var(--glass);border:1px solid var(--border);color:var(--text-2);font-size:11.5px;cursor:pointer;transition:all 0.25s var(--ease);display:flex;align-items:center;gap:5px;user-select:none}
-.lex-cat:hover{background:var(--glass-2);color:var(--text);transform:translateY(-1px)}
-.lex-cat.active{background:linear-gradient(135deg,rgba(108,140,255,0.2),rgba(56,217,245,0.1));border-color:rgba(108,140,255,0.4);color:#fff;box-shadow:0 2px 12px rgba(108,140,255,0.2)}
-.lex-cat .count{font-size:10px;background:var(--glass-3);padding:1px 7px;border-radius:10px;color:var(--text-3)}
-.lex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
-.cmd-card{padding:16px;animation:cardIn 0.4s var(--ease) backwards}
-@keyframes cardIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-.cmd-card:hover{transform:translateY(-3px);border-color:var(--border-3)}
-.cmd-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
-.cmd-name{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-2);background:var(--bg-0);padding:5px 10px;border-radius:7px;border:1px solid var(--border);flex:1;overflow-x:auto;white-space:nowrap}
-.cmd-fav{background:none;border:none;color:var(--text-3);cursor:pointer;font-size:15px;padding:3px;transition:all 0.2s;flex-shrink:0}
-.cmd-fav:hover{transform:scale(1.2)}
-.cmd-fav.active{color:var(--amber)}
-.cmd-desc{font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:8px}
-.cmd-syntax{font-family:var(--mono);font-size:10.5px;color:var(--text-3);background:var(--bg-0);padding:7px 10px;border-radius:7px;border:1px solid var(--border);margin-bottom:8px;overflow-x:auto;white-space:pre}
-.cmd-example{font-size:11px;color:var(--text-3);line-height:1.5}
-.cmd-example strong{color:var(--text-2);font-weight:600}
-.cmd-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
-.cmd-level{font-size:10px;padding:2px 9px;border-radius:10px;font-weight:600;letter-spacing:0.5px}
-.level-easy{background:rgba(74,222,128,0.1);color:var(--green);border:1px solid rgba(74,222,128,0.25)}
-.level-mid{background:rgba(251,191,36,0.1);color:var(--amber);border:1px solid rgba(251,191,36,0.25)}
-.level-hard{background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.25)}
-.cmd-copy{background:var(--glass-2);border:1px solid var(--border);color:var(--text-2);padding:4px 10px;border-radius:7px;font-size:10.5px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:4px}
-.cmd-copy:hover{background:var(--accent);border-color:var(--accent);color:#fff}
-.cmd-copy.copied{background:var(--green);border-color:var(--green);color:#fff}
-.lex-empty{grid-column:1/-1;text-align:center;padding:50px 20px;color:var(--text-3)}
-.lex-empty .icon{font-size:44px;margin-bottom:12px;opacity:0.4}
+/* ===== Process Table ===== */
+.proc-table{width:100%;border-collapse:collapse;font-size:12px}
+.proc-table th{text-align:left;padding:10px 12px;color:var(--text-3);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)}
+.proc-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text-2)}
+.proc-table tr{transition:background 0.2s}
+.proc-table tbody tr:hover{background:var(--glass-2)}
+.proc-cpu{font-family:var(--mono);color:var(--amber)}
+.proc-mem{font-family:var(--mono);color:var(--cyan)}
+.proc-bar{height:4px;background:var(--glass-2);border-radius:2px;overflow:hidden;margin-top:4px}
+.proc-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
 
-/* ===== Lab (模拟实战) ===== */
-.lab-header{margin-bottom:20px}
-.lab-title{font-size:22px;font-weight:800;margin-bottom:5px}
-.lab-sub{font-size:12.5px;color:var(--text-2)}
-.lab-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-.lab-stat{padding:16px;text-align:center}
-.lab-stat .num{font-size:28px;font-weight:800;font-family:var(--mono)}
-.lab-stat .lbl{font-size:11px;color:var(--text-3);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
-.lab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:20px}
-.scenario-card{padding:20px;cursor:pointer}
-.scenario-card:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:0 12px 32px rgba(108,140,255,0.2)}
-.scenario-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;border:1px solid var(--border)}
-.scenario-card h4{font-size:15px;font-weight:700;margin-bottom:6px}
-.scenario-card p{font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:12px}
-.scenario-meta{display:flex;gap:8px;align-items:center}
-.scenario-diff{font-size:10px;padding:3px 10px;border-radius:10px;font-weight:600}
-.scenario-steps{font-size:10.5px;color:var(--text-3)}
-.scenario-done{position:absolute;top:14px;right:14px;font-size:20px}
+/* ===== Alert List ===== */
+.alert-list{display:flex;flex-direction:column;gap:10px}
+.alert-item{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:12px;background:var(--glass);border:1px solid var(--border);transition:all 0.3s var(--ease);animation:alertIn 0.4s var(--ease)}
+@keyframes alertIn{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+.alert-item:hover{border-color:var(--border-2);transform:translateX(4px)}
+.alert-icon{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.alert-icon.critical{background:rgba(248,113,113,0.15);color:var(--red)}
+.alert-icon.warning{background:rgba(251,191,36,0.15);color:var(--amber)}
+.alert-icon.info{background:rgba(56,217,245,0.15);color:var(--cyan)}
+.alert-content{flex:1;min-width:0}
+.alert-title{font-size:13px;font-weight:600;margin-bottom:2px}
+.alert-desc{font-size:11px;color:var(--text-3)}
+.alert-time{font-size:10px;color:var(--text-3);font-family:var(--mono);flex-shrink:0}
 
-/* Lab Quiz */
-.quiz-wrap{max-width:760px;margin:0 auto}
-.quiz-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.quiz-back{background:var(--glass-2);border:1px solid var(--border);color:var(--text-2);padding:8px 16px;border-radius:10px;cursor:pointer;font-size:12px;transition:all 0.2s}
-.quiz-back:hover{background:var(--glass-3);color:var(--text)}
-.quiz-progress{font-size:12px;color:var(--text-2);font-family:var(--mono)}
-.quiz-bar{height:5px;background:var(--glass-2);border-radius:3px;margin-bottom:20px;overflow:hidden}
-.quiz-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:3px;transition:width 0.5s var(--ease)}
-.quiz-card{padding:28px;margin-bottom:16px}
-.quiz-scene{font-size:12px;color:var(--accent-2);margin-bottom:8px;font-weight:600;letter-spacing:0.5px}
-.quiz-question{font-size:17px;font-weight:700;line-height:1.5;margin-bottom:20px}
-.quiz-options{display:flex;flex-direction:column;gap:10px}
-.quiz-option{padding:14px 18px;border-radius:var(--radius-sm);background:var(--bg-1);border:1px solid var(--border);cursor:pointer;transition:all 0.25s var(--ease);display:flex;align-items:flex-start;gap:12px;font-size:13px;line-height:1.5}
-.quiz-option:hover:not(.disabled){border-color:var(--accent);background:var(--glass-2);transform:translateX(4px)}
-.quiz-option.disabled{cursor:default}
-.quiz-option.correct{border-color:var(--green);background:rgba(74,222,128,0.08)}
-.quiz-option.wrong{border-color:var(--red);background:rgba(248,113,113,0.08)}
-.quiz-option .opt-letter{width:24px;height:24px;border-radius:7px;background:var(--glass-3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;font-family:var(--mono)}
-.quiz-option.correct .opt-letter{background:var(--green);color:#fff}
-.quiz-option.wrong .opt-letter{background:var(--red);color:#fff}
-.quiz-explain{margin-top:14px;padding:14px 16px;border-radius:var(--radius-sm);background:var(--bg-0);border-left:3px solid var(--accent);font-size:12.5px;color:var(--text-2);line-height:1.7;display:none}
-.quiz-explain.show{display:block;animation:fadeIn 0.3s}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.quiz-explain strong{color:var(--accent-2)}
-.quiz-next{margin-top:16px;text-align:right}
+/* ===== Quick Actions ===== */
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.quick-btn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 12px;border-radius:12px;background:var(--glass);border:1px solid var(--border);cursor:pointer;transition:all 0.3s var(--ease);color:var(--text-2);font-size:11px;font-family:var(--font)}
+.quick-btn:hover{border-color:var(--accent);color:var(--text);transform:translateY(-3px);box-shadow:0 8px 24px rgba(108,140,255,0.2)}
+.quick-btn:active{transform:translateY(-1px) scale(0.98)}
+.quick-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
-/* Quiz Result */
-.result-card{padding:36px;text-align:center}
-.result-icon{font-size:64px;margin-bottom:16px}
-.result-score{font-size:48px;font-weight:800;font-family:var(--mono);margin-bottom:6px}
-.result-title{font-size:20px;font-weight:700;margin-bottom:8px}
-.result-desc{font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:24px;max-width:500px;margin-left:auto;margin-right:auto}
-.result-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+/* ===== Console ===== */
+.console-output{background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:12px;padding:16px;font-family:var(--mono);font-size:12px;line-height:1.8;max-height:400px;overflow-y:auto;color:var(--green)}
+.console-output::-webkit-scrollbar{width:6px}
+.console-output::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:3px}
+.console-line{opacity:0;animation:lineIn 0.3s forwards}
+@keyframes lineIn{to{opacity:1}}
+.console-input-row{display:flex;gap:10px;margin-top:12px}
+.console-input{flex:1;padding:10px 14px;border-radius:10px;background:var(--glass);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;transition:border-color 0.3s}
+.console-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(108,140,255,0.1)}
+.console-send{padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.3s}
+.console-send:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(108,140,255,0.3)}
 
-/* ===== Tools (工具箱) ===== */
-.tools-header{margin-bottom:20px}
-.tools-title{font-size:22px;font-weight:800;margin-bottom:5px}
-.tools-sub{font-size:12.5px;color:var(--text-2)}
-.tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
-.tool-card{padding:20px}
-.tool-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.tool-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;background:linear-gradient(135deg,rgba(108,140,255,0.15),rgba(56,217,245,0.08));border:1px solid var(--border);flex-shrink:0}
-.tool-head h4{font-size:14px;font-weight:600}
-.tool-input{width:100%;padding:10px 12px;border-radius:var(--radius-xs);background:var(--bg-1);border:1px solid var(--border);color:var(--text);font-size:12px;font-family:var(--mono);outline:none;transition:all 0.25s;resize:vertical;min-height:60px}
-.tool-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(108,140,255,0.12)}
-.tool-output{width:100%;padding:10px 12px;border-radius:var(--radius-xs);background:var(--bg-0);border:1px solid var(--border);color:var(--accent-2);font-size:12px;font-family:var(--mono);min-height:60px;word-break:break-all;white-space:pre-wrap;margin-top:10px}
-.tool-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-.tool-btn{padding:7px 14px;border-radius:8px;background:var(--glass-2);border:1px solid var(--border);color:var(--text-2);font-size:11.5px;cursor:pointer;transition:all 0.2s;font-family:var(--font)}
-.tool-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff}
-.tool-btn.primary{background:linear-gradient(135deg,var(--accent),#5b7cf0);border-color:transparent;color:#fff}
-.tool-select{padding:7px 10px;border-radius:8px;background:var(--bg-1);border:1px solid var(--border);color:var(--text);font-size:11.5px;outline:none;cursor:pointer}
-.tool-label{font-size:11px;color:var(--text-3);margin-bottom:6px;display:block;font-weight:600}
+/* ===== Form ===== */
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;font-weight:500}
+.form-input{width:100%;padding:10px 14px;border-radius:10px;background:var(--glass);border:1px solid var(--border);color:var(--text);font-size:13px;outline:none;transition:all 0.3s}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(108,140,255,0.1)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.btn{padding:10px 24px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.3s var(--ease);display:inline-flex;align-items:center;gap:8px}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(108,140,255,0.35)}
+.btn-secondary{background:var(--glass);border:1px solid var(--border);color:var(--text-2)}
+.btn-secondary:hover{color:var(--text);border-color:var(--border-2)}
+.btn-danger{background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.3);color:var(--red)}
+.btn-danger:hover{background:rgba(248,113,113,0.25)}
 
-/* Connect */
-.connect-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.form-card{padding:22px}
-.form-title{font-size:15px;font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:8px}
-.form-desc{font-size:11.5px;color:var(--text-3);margin-bottom:18px;line-height:1.5}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:11.5px;font-weight:600;color:var(--text-2);margin-bottom:6px}
-.field input,.field select,.field textarea{width:100%;padding:10px 14px;border-radius:var(--radius-xs);background:var(--bg-1);border:1px solid var(--border);color:var(--text);font-size:12.5px;font-family:var(--font);outline:none;transition:all 0.25s var(--ease)}
-.field input:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(108,140,255,0.12)}
-.field input::placeholder{color:var(--text-3)}
-.field-row{display:flex;gap:12px}
-.field-row .field{flex:1}
-.hint{font-size:11px;color:var(--text-3);margin-top:5px;line-height:1.5}
-.hint.err{color:var(--red)}
-.hint.ok{color:var(--green)}
-.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+/* ===== Logs ===== */
+.log-container{background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:12px;padding:16px;font-family:var(--mono);font-size:11px;line-height:1.8;max-height:500px;overflow-y:auto}
+.log-line{padding:2px 0;opacity:0;animation:lineIn 0.2s forwards}
+.log-time{color:var(--text-3)}
+.log-level{font-weight:600;padding:1px 6px;border-radius:4px;margin-right:8px}
+.log-level.info{color:var(--cyan)}
+.log-level.warn{color:var(--amber)}
+.log-level.error{color:var(--red)}
+.log-level.success{color:var(--green)}
 
-/* Logs */
-.logs-wrap{height:100%;display:flex;flex-direction:column;padding:18px 22px}
-.logs-card{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.logs-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border)}
-.logs-head span{font-size:12.5px;font-weight:600;font-family:var(--mono)}
-.logs-body{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:11.5px;line-height:1.8;background:rgba(0,0,0,0.2)}
-.log-line{display:flex;gap:10px;padding:1px 0}
-.log-time{color:var(--text-3);flex-shrink:0;font-size:10.5px}
-.log-msg{color:var(--text-2);word-break:break-all}
-.log-line.warn .log-msg{color:var(--amber)}
-.log-line.error .log-msg{color:var(--red)}
-.log-line.console .log-msg{color:var(--accent-2)}
+/* ===== Toast ===== */
+.toasts{position:fixed;bottom:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:10px;background:var(--glass-2);border:1px solid var(--border-2);backdrop-filter:blur(16px);font-size:12px;animation:toastIn 0.3s var(--ease);box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastOut{to{opacity:0;transform:translateX(30px)}}
 
-/* Toast */
-.toasts{position:fixed;bottom:24px;right:24px;z-index:9998;display:flex;flex-direction:column;gap:10px}
-.toast{padding:12px 18px;border-radius:var(--radius-sm);background:var(--glass-3);border:1px solid var(--border-2);backdrop-filter:blur(20px);box-shadow:var(--shadow-lg);font-size:12.5px;color:var(--text);display:flex;align-items:center;gap:8px;animation:toastIn 0.4s var(--ease-spring);min-width:180px}
-.toast.success{border-left:3px solid var(--green)}
-.toast.error{border-left:3px solid var(--red)}
-.toast.info{border-left:3px solid var(--accent)}
-@keyframes toastIn{from{opacity:0;transform:translateX(40px) scale(0.9)}to{opacity:1;transform:translateX(0) scale(1)}}
-@keyframes toastOut{to{opacity:0;transform:translateX(40px)}}
+/* ===== Server Info ===== */
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.info-item{padding:14px 16px;border-radius:12px;background:var(--glass);border:1px solid var(--border)}
+.info-label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.info-value{font-size:14px;font-weight:600;font-family:var(--mono)}
 
-@media(max-width:1100px){
-  .monitor-grid{grid-template-columns:repeat(2,1fr)}
-  .monitor-hero{grid-template-columns:1fr}
-  .feature-row{grid-template-columns:1fr}
-  .connect-grid{grid-template-columns:1fr}
-  .lab-stats{grid-template-columns:1fr}
-}
-@media(max-width:768px){
-  .topnav{padding:0 12px;height:56px}
-  .brand-sub{display:none}
+/* ===== Network Cards ===== */
+.net-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.net-card{padding:16px;text-align:center}
+.net-icon{font-size:24px;margin-bottom:8px}
+.net-value{font-size:20px;font-weight:700;font-family:var(--mono)}
+.net-unit{font-size:11px;color:var(--text-3)}
+
+/* ===== Responsive ===== */
+@media (max-width:900px){
   .nav-tab span{display:none}
-  .nav-tab{padding:8px 10px}
-  .pane-inner{padding:16px 14px}
-  .monitor-grid{grid-template-columns:1fr}
-  .lex-grid{grid-template-columns:1fr}
-  .tools-grid{grid-template-columns:1fr}
-  .status-pill .pill-text{display:none}
+  .nav-tab{padding:9px 10px}
+  .form-row{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 
+<canvas id="particles"></canvas>
+
 <div id="splash">
   <div class="splash-logo">S</div>
   <div class="splash-bar"></div>
   <div class="splash-text">Loading Server Health Monitor</div>
-  <div class="splash-error" id="splashError" style="display:none;margin-top:8px;font-size:11px;color:#f87171;max-width:360px;text-align:center;line-height:1.6"></div>
-  <button class="splash-skip" id="splashSkip" style="display:none;margin-top:12px;padding:6px 16px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:11px;cursor:pointer" onclick="forceHideSplash()">跳过加载</button>
+  <div class="splash-ver">v5.0.0 · 运维一体智能插件</div>
+  <div class="splash-error" id="splashError"></div>
+  <button class="splash-skip" id="splashSkip" onclick="forceHideSplash()">跳过加载</button>
 </div>
 
 <div id="app">
   <nav class="topnav">
     <div class="brand" onclick="switchPane('monitor')">
       <div class="brand-mark">S</div>
-      <div><div class="brand-name">Server Health</div><div class="brand-sub">Monitor · v4.0</div></div>
+      <div><div class="brand-name">Server Health</div><div class="brand-sub">Monitor · v5.0</div></div>
     </div>
-    <div class="nav-wrapper">
-      <button class="nav-arrow" id="navArrowLeft" onclick="scrollNav(-1)"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
-      <div class="nav-fade-left" id="navFadeLeft"></div>
-      <div class="nav-tabs" id="navTabs">
+    <div class="nav-tabs" id="navTabs">
       <button class="nav-tab active" data-pane="monitor"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>监控</span></button>
-      <button class="nav-tab" data-pane="console"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>控制台</span></button>
-      <button class="nav-tab" data-pane="lexicon"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>命令词典</span></button>
-      <button class="nav-tab" data-pane="lab"><svg viewBox="0 0 24 24"><path d="M10 2v7.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V2"/><line x1="8" y1="2" x2="16" y2="2"/><line x1="7" y1="15" x2="17" y2="15"/></svg><span>模拟实战</span></button>
-      <button class="nav-tab" data-pane="tools"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span>工具箱</span></button>
+      <button class="nav-tab" data-pane="console"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span>控制台</span></button>
       <button class="nav-tab" data-pane="connect"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>连接</span></button>
       <button class="nav-tab" data-pane="logs"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>日志</span></button>
-      </div>
-      <div class="nav-fade-right" id="navFadeRight"></div>
-      <button class="nav-arrow" id="navArrowRight" onclick="scrollNav(1)"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
     </div>
     <div class="status-group">
-      <div class="status-pill"><span class="status-dot" id="connDot"></span><span class="pill-text" id="connText">未连接</span></div>
-      <div class="status-pill"><span class="status-dot" id="consoleDot"></span><span class="pill-text">控制台</span></div>
+      <div class="status-pill"><span class="status-dot" id="connDot"></span><span id="connText">未连接</span></div>
     </div>
   </nav>
 
   <div class="content">
     <!-- Monitor -->
     <section class="pane active" id="pane-monitor">
-      <div class="pane-inner">
-        <div class="monitor-grid">
-          <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></span>节点在线</div><div class="stat-value" style="color:var(--green)">96.2%</div><div class="stat-sub">本周稳定运行</div><div class="stat-bar"><div class="stat-bar-fill" style="width:96.2%;background:linear-gradient(90deg,var(--green),#22c55e)"></div></div></div>
-          <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></span>待处理告警</div><div class="stat-value" style="color:var(--amber)">3</div><div class="stat-sub">2 警告 · 1 严重</div><div class="stat-bar"><div class="stat-bar-fill" style="width:30%;background:linear-gradient(90deg,var(--amber),#f59e0b)"></div></div></div>
-          <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--cyan);box-shadow:0 0 6px var(--cyan)"></span>平均响应</div><div class="stat-value" style="color:var(--cyan)">128ms</div><div class="stat-sub">网络延迟正常</div><div class="stat-bar"><div class="stat-bar-fill" style="width:25%;background:linear-gradient(90deg,var(--cyan),#06b6d4)"></div></div></div>
-          <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--accent-3);box-shadow:0 0 6px var(--accent-3)"></span>实战完成</div><div class="stat-value" style="color:var(--accent-3)" id="labDoneCount">0</div><div class="stat-sub">模拟实战场景</div><div class="stat-bar"><div class="stat-bar-fill" style="width:0%;background:linear-gradient(90deg,var(--accent-3),#8b5cf6)" id="labDoneBar"></div></div></div>
+      <div class="stat-grid">
+        <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></span>CPU 使用率</div><div class="stat-value" id="cpuVal" style="color:var(--green)">--</div><div class="stat-sub" id="cpuSub">-- 核心</div><div class="stat-bar"><div class="stat-bar-fill" id="cpuBar" style="width:0%;background:linear-gradient(90deg,var(--green),#22c55e)"></div></div></div>
+        <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--cyan);box-shadow:0 0 6px var(--cyan)"></span>内存使用</div><div class="stat-value" id="memVal" style="color:var(--cyan)">--</div><div class="stat-sub" id="memSub">-- / --</div><div class="stat-bar"><div class="stat-bar-fill" id="memBar" style="width:0%;background:linear-gradient(90deg,var(--cyan),#06b6d4)"></div></div></div>
+        <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></span>磁盘使用</div><div class="stat-value" id="diskVal" style="color:var(--amber)">--</div><div class="stat-sub" id="diskSub">-- / --</div><div class="stat-bar"><div class="stat-bar-fill" id="diskBar" style="width:0%;background:linear-gradient(90deg,var(--amber),#f59e0b)"></div></div></div>
+        <div class="glass stat-card"><div class="stat-label"><span class="dot" style="background:var(--accent-3);box-shadow:0 0 6px var(--accent-3)"></span>系统负载</div><div class="stat-value" id="loadVal" style="color:var(--accent-3)">--</div><div class="stat-sub" id="loadSub">1/5/15 min</div><div class="stat-bar"><div class="stat-bar-fill" id="loadBar" style="width:0%;background:linear-gradient(90deg,var(--accent-3),#7c3aed)"></div></div></div>
+      </div>
+
+      <div class="glass chart-container">
+        <div class="chart-title"><span class="icon">📈</span>实时趋势</div>
+        <canvas class="chart-canvas" id="trendChart"></canvas>
+        <div class="chart-legend">
+          <div class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>CPU</div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--cyan)"></span>内存</div>
+          <div class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span>磁盘</div>
         </div>
-        <div class="monitor-hero">
-          <div class="glass hero-main">
-            <div class="hero-eyebrow">Server Health Monitor</div>
-            <h1 class="hero-title">高可用运维平台<br>从连接到智能治理</h1>
-            <p class="hero-desc">面向新手与运维人员的统一桌面入口。聚合实时监控、命令词典、模拟实战、运维工具箱、远程连接与管理控制台，零门槛上手运维。</p>
-            <div class="hero-actions">
-              <button class="btn btn-primary" onclick="switchPane('connect')"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>连接服务器</button>
-              <button class="btn btn-ghost" onclick="openMonitor()"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>实时监控</button>
-              <button class="btn btn-ghost" onclick="switchPane('lab')"><svg viewBox="0 0 24 24"><path d="M10 2v7.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>模拟实战</button>
-              <button class="btn btn-ghost" onclick="switchPane('tools')"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具箱</button>
-            </div>
-          </div>
-          <div class="hero-side">
-            <div class="glass mini-stat"><div class="mini-icon" style="background:rgba(74,222,128,0.1)">📡</div><div class="mini-info"><div class="mini-label">远程连接</div><div class="mini-value">SSH / 直连</div></div></div>
-            <div class="glass mini-stat"><div class="mini-icon" style="background:rgba(251,191,36,0.1)">🧠</div><div class="mini-info"><div class="mini-label">智能诊断</div><div class="mini-value">阈值 + AI</div></div></div>
-            <div class="glass mini-stat"><div class="mini-icon" style="background:rgba(108,140,255,0.1)">📚</div><div class="mini-info"><div class="mini-label">命令词典</div><div class="mini-value">120+ 命令</div></div></div>
-            <div class="glass mini-stat"><div class="mini-icon" style="background:rgba(167,139,250,0.1)">🧪</div><div class="mini-info"><div class="mini-label">模拟实战</div><div class="mini-value">6 个场景</div></div></div>
-          </div>
-        </div>
-        <div class="feature-row">
-          <div class="glass feature-card"><div class="feature-icon">📡</div><h4>远程连接</h4><p>支持 SSH 隧道、直接连接、内网代理三种方式，新手也能安全接入。</p><div class="feature-tags"><span>安全</span><span>稳定</span></div></div>
-          <div class="glass feature-card"><div class="feature-icon">🧪</div><h4>模拟实战</h4><p>交互式故障排查场景，CPU飙高、网站宕机、磁盘爆满，边做边学。</p><div class="feature-tags"><span>新手</span><span>互动</span></div></div>
-          <div class="glass feature-card"><div class="feature-icon">🛠️</div><h4>运维工具箱</h4><p>Base64编解码、JSON格式化、密码生成、时间戳转换，开箱即用。</p><div class="feature-tags"><span>实用</span><span>离线</span></div></div>
-        </div>
+      </div>
+
+      <div class="section-title">网络流量</div>
+      <div class="net-grid" id="netGrid">
+        <div class="glass net-card"><div class="net-icon">📥</div><div class="net-value" id="rxVal">--</div><div class="net-unit">接收速率</div></div>
+        <div class="glass net-card"><div class="net-icon">📤</div><div class="net-value" id="txVal">--</div><div class="net-unit">发送速率</div></div>
+        <div class="glass net-card"><div class="net-icon">🔗</div><div class="net-value" id="tcpVal">--</div><div class="net-unit">TCP 连接</div></div>
+        <div class="glass net-card"><div class="net-icon">⏱️</div><div class="net-value" id="uptimeVal">--</div><div class="net-unit">运行时间</div></div>
+      </div>
+
+      <div class="section-title">Top 进程</div>
+      <div class="glass" style="padding:0;overflow:hidden">
+        <table class="proc-table" id="procTable">
+          <thead><tr><th>PID</th><th>进程名</th><th>用户</th><th>CPU%</th><th>内存(KB)</th></tr></thead>
+          <tbody><tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">连接服务器后显示进程列表</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="section-title">系统信息</div>
+      <div class="info-grid" id="infoGrid">
+        <div class="info-item"><div class="info-label">主机名</div><div class="info-value" id="infoHost">--</div></div>
+        <div class="info-item"><div class="info-label">操作系统</div><div class="info-value" id="infoOS">--</div></div>
+        <div class="info-item"><div class="info-label">内核版本</div><div class="info-value" id="infoKernel">--</div></div>
+        <div class="info-item"><div class="info-label">架构</div><div class="info-value" id="infoArch">--</div></div>
+        <div class="info-item"><div class="info-label">CPU 核心</div><div class="info-value" id="infoCores">--</div></div>
+        <div class="info-item"><div class="info-label">文件描述符</div><div class="info-value" id="infoFD">--</div></div>
+      </div>
+
+      <div class="section-title">快捷运维</div>
+      <div class="quick-grid">
+        <button class="quick-btn" onclick="runQuick('top')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>查看进程</button>
+        <button class="quick-btn" onclick="runQuick('df')"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>磁盘空间</button>
+        <button class="quick-btn" onclick="runQuick('free')"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/></svg>内存状态</button>
+        <button class="quick-btn" onclick="runQuick('ss')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>网络连接</button>
+        <button class="quick-btn" onclick="runQuick('journal')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>系统日志</button>
+        <button class="quick-btn" onclick="runQuick('services')"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>服务管理</button>
       </div>
     </section>
 
     <!-- Console -->
     <section class="pane" id="pane-console">
-      <div class="console-wrap">
-        <div id="consoleHost"><iframe id="consoleFrame" src="about:blank"></iframe></div>
-        <div class="console-setup" id="consoleSetup"><div class="pane-inner" style="max-width:480px"><div class="glass" style="padding:36px;text-align:center"><div style="font-size:48px;margin-bottom:16px">🧩</div><h3 style="font-size:18px;font-weight:700;margin-bottom:10px">管理控制台未启动</h3><p style="font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:22px">启动后可在此窗口内管理多台服务器、用户权限、部署与工单。</p><button class="btn btn-primary" onclick="startConsole()">启动管理控制台</button></div></div></div>
-      </div>
-    </section>
-
-    <!-- Lexicon -->
-    <section class="pane" id="pane-lexicon">
-      <div class="pane-inner">
-        <div class="lex-header"><h2 class="lex-title">📚 命令词典</h2><p class="lex-sub">跨平台运维命令速查 · 120+ 命令 · 支持搜索与收藏</p></div>
-        <div class="lex-search-row">
-          <div class="lex-search"><span class="lex-search-icon">🔍</span><input type="text" id="lexSearch" placeholder="搜索命令、用途或关键词…" oninput="renderLexicon()"></div>
-          <button class="lex-fav-toggle" id="favToggle" onclick="toggleFavFilter()">⭐ 收藏</button>
+      <div class="section-title" style="margin-top:0">远程控制台</div>
+      <div class="glass" style="padding:20px">
+        <div class="console-output" id="consoleOutput">
+          <div class="console-line" style="color:var(--accent)">╔══════════════════════════════════════╗</div>
+          <div class="console-line" style="color:var(--accent)">║  Server Health Monitor 远程控制台 v5.0 ║</div>
+          <div class="console-line" style="color:var(--accent)">╚══════════════════════════════════════╝</div>
+          <div class="console-line" style="color:var(--text-3)">连接服务器后可执行命令。输入 help 查看可用命令。</div>
         </div>
-        <div class="lex-cats" id="lexCats"></div>
-        <div class="lex-grid" id="lexGrid"></div>
-      </div>
-    </section>
-
-    <!-- Lab (模拟实战) -->
-    <section class="pane" id="pane-lab">
-      <div class="pane-inner">
-        <div id="labList">
-          <div class="lab-header"><h2 class="lab-title">🧪 模拟实战实验室</h2><p class="lab-sub">交互式故障排查训练 · 在真实场景中学习运维思维 · 完成后获得评分和详细解析</p></div>
-          <div class="lab-stats">
-            <div class="glass lab-stat"><div class="num" style="color:var(--accent-2)" id="labTotal">6</div><div class="lbl">场景总数</div></div>
-            <div class="glass lab-stat"><div class="num" style="color:var(--green)" id="labCompleted">0</div><div class="lbl">已完成</div></div>
-            <div class="glass lab-stat"><div class="num" style="color:var(--amber)" id="labAvgScore">—</div><div class="lbl">平均得分</div></div>
-          </div>
-          <div class="lab-grid" id="labGrid"></div>
+        <div class="console-input-row">
+          <input class="console-input" id="consoleInput" placeholder="输入命令..." onkeydown="if(event.key==='Enter')sendConsole()">
+          <button class="console-send" onclick="sendConsole()">执行</button>
         </div>
-        <div id="labQuiz" style="display:none"></div>
       </div>
-    </section>
 
-    <!-- Tools -->
-    <section class="pane" id="pane-tools">
-      <div class="pane-inner">
-        <div class="tools-header"><h2 class="tools-title">🛠️ 运维工具箱</h2><p class="tools-sub">常用运维小工具 · 全部本地运行 · 无需联网</p></div>
-        <div class="tools-grid">
-          <!-- Base64 -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">🔐</div><h4>Base64 编解码</h4></div>
-            <label class="tool-label">输入文本</label>
-            <textarea class="tool-input" id="b64Input" placeholder="输入要编码/解码的文本…"></textarea>
-            <div class="tool-row">
-              <button class="tool-btn primary" onclick="b64Encode()">编码</button>
-              <button class="tool-btn" onclick="b64Decode()">解码</button>
-              <button class="tool-btn" onclick="copyOutput('b64Output')">复制结果</button>
-            </div>
-            <div class="tool-output" id="b64Output">结果显示在这里…</div>
-          </div>
-          <!-- URL -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">🌐</div><h4>URL 编解码</h4></div>
-            <label class="tool-label">输入 URL 或文本</label>
-            <textarea class="tool-input" id="urlInput" placeholder="https://example.com/?q=你好"></textarea>
-            <div class="tool-row">
-              <button class="tool-btn primary" onclick="urlEncode()">编码</button>
-              <button class="tool-btn" onclick="urlDecode()">解码</button>
-              <button class="tool-btn" onclick="copyOutput('urlOutput')">复制结果</button>
-            </div>
-            <div class="tool-output" id="urlOutput">结果显示在这里…</div>
-          </div>
-          <!-- JSON -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">{ }</div><h4>JSON 格式化</h4></div>
-            <label class="tool-label">输入 JSON</label>
-            <textarea class="tool-input" id="jsonInput" placeholder='{"name":"test","value":123}'></textarea>
-            <div class="tool-row">
-              <button class="tool-btn primary" onclick="jsonFormat()">格式化</button>
-              <button class="tool-btn" onclick="jsonMinify()">压缩</button>
-              <button class="tool-btn" onclick="copyOutput('jsonOutput')">复制结果</button>
-            </div>
-            <div class="tool-output" id="jsonOutput">结果显示在这里…</div>
-          </div>
-          <!-- 时间戳 -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">⏰</div><h4>时间戳转换</h4></div>
-            <label class="tool-label">时间戳（秒）</label>
-            <input class="tool-input" id="tsInput" style="min-height:unset" placeholder="1700000000" value="">
-            <div class="tool-row">
-              <button class="tool-btn primary" onclick="tsToDate()">时间戳→日期</button>
-              <button class="tool-btn" onclick="dateToTs()">当前时间戳</button>
-              <button class="tool-btn" onclick="copyOutput('tsOutput')">复制结果</button>
-            </div>
-            <div class="tool-output" id="tsOutput">结果显示在这里…</div>
-          </div>
-          <!-- 密码生成 -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">🔑</div><h4>密码生成器</h4></div>
-            <label class="tool-label">长度：<span id="pwLenVal">16</span> 位</label>
-            <input type="range" min="8" max="64" value="16" id="pwLen" oninput="document.getElementById('pwLenVal').textContent=this.value" style="width:100%;margin-bottom:10px">
-            <div class="tool-row">
-              <button class="tool-btn primary" onclick="genPassword()">生成密码</button>
-              <button class="tool-btn" onclick="copyOutput('pwOutput')">复制</button>
-            </div>
-            <div class="tool-output" id="pwOutput">点击生成密码…</div>
-          </div>
-          <!-- 哈希 -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">#️⃣</div><h4>哈希计算</h4></div>
-            <label class="tool-label">输入文本</label>
-            <input class="tool-input" id="hashInput" style="min-height:unset" placeholder="输入要计算哈希的文本…">
-            <div class="tool-row">
-              <select class="tool-select" id="hashAlgo"><option value="SHA-256">SHA-256</option><option value="SHA-1">SHA-1</option><option value="MD5">MD5</option></select>
-              <button class="tool-btn primary" onclick="calcHash()">计算</button>
-              <button class="tool-btn" onclick="copyOutput('hashOutput')">复制</button>
-            </div>
-            <div class="tool-output" id="hashOutput">结果显示在这里…</div>
-          </div>
-          <!-- 进制转换 -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">🔢</div><h4>进制转换</h4></div>
-            <label class="tool-label">输入十进制数</label>
-            <input class="tool-input" id="decInput" style="min-height:unset" placeholder="例如 255" oninput="convertBase()">
-            <div class="tool-output" id="baseOutput">二进制 / 八进制 / 十六进制 结果…</div>
-          </div>
-          <!-- 正则测试 -->
-          <div class="glass tool-card">
-            <div class="tool-head"><div class="tool-icon">.*</div><h4>正则测试</h4></div>
-            <label class="tool-label">正则表达式</label>
-            <input class="tool-input" id="rePattern" style="min-height:unset" placeholder="例如 \d+">
-            <label class="tool-label" style="margin-top:8px">测试文本</label>
-            <input class="tool-input" id="reText" style="min-height:unset" placeholder="输入要匹配的文本…" oninput="testRegex()">
-            <div class="tool-output" id="reOutput">匹配结果…</div>
-          </div>
-        </div>
+      <div class="section-title">服务状态</div>
+      <div class="glass" style="padding:20px" id="serviceList">
+        <div style="text-align:center;color:var(--text-3);padding:20px">连接服务器后显示服务状态</div>
+      </div>
+
+      <div class="section-title">告警中心</div>
+      <div class="alert-list" id="alertList">
+        <div class="alert-item"><div class="alert-icon info">ℹ️</div><div class="alert-content"><div class="alert-title">系统就绪</div><div class="alert-desc">等待连接服务器后开始监控</div></div><div class="alert-time">--:--:--</div></div>
       </div>
     </section>
 
     <!-- Connect -->
     <section class="pane" id="pane-connect">
-      <div class="pane-inner">
-        <div class="connect-grid">
-          <div class="glass form-card">
-            <div class="form-title">🔗 服务器连接</div>
-            <div class="form-desc">选择连接方式并填写目标节点参数。SSH 隧道最稳妥。</div>
-            <div class="field"><label>连接方式</label><select id="cfgMode" onchange="modeChanged()"><option value="tunnel">SSH 隧道（推荐）</option><option value="direct">直接连接</option><option value="proxy">内网代理</option></select></div>
-            <div class="field-row"><div class="field"><label id="lblServer">服务器地址</label><input type="text" id="cfgIp" placeholder="例如 1.2.3.4"></div><div class="field" style="flex:0 0 100px"><label>端口</label><input type="number" id="cfgPort" value="8080"></div></div>
-            <div id="sshFields" style="display:none">
-              <div class="field-row"><div class="field"><label>SSH 用户名</label><input type="text" id="cfgSshUser" value="root"></div><div class="field" style="flex:0 0 100px"><label>SSH 端口</label><input type="number" id="cfgSshPort" value="22"></div></div>
-              <div class="field"><label>SSH 私钥路径</label><input type="text" id="cfgSshKey" placeholder="留空则用 ~/.ssh/id_ed25519"></div>
-            </div>
-            <div class="field-row"><div class="field"><label>认证用户（可选）</label><input type="text" id="cfgAuthUser" placeholder="Agent 认证用户"></div><div class="field"><label>认证密码（可选）</label><input type="password" id="cfgAuthPass" placeholder="Agent 认证密码"></div></div>
-            <div class="btn-row"><button class="btn btn-primary" onclick="saveConfig()">保存</button><button class="btn btn-ghost" onclick="testConn()">测试</button><button class="btn btn-ghost" onclick="connect()">连接</button><button class="btn btn-ghost" onclick="disconnect()">断开</button></div>
-            <div class="hint" id="connResult" style="margin-top:10px"></div>
-          </div>
-          <div class="glass form-card">
-            <div class="form-title">🧩 管理控制台</div>
-            <div class="form-desc">本地管理控制台，多服务器控制、权限、部署、工单。</div>
-            <div class="btn-row"><button class="btn btn-primary" onclick="startConsole()">启动控制台</button><button class="btn btn-ghost" onclick="stopConsole()">停止</button></div>
-            <div class="hint" id="consoleResult" style="margin-top:10px"></div>
-            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-              <div class="form-title" style="font-size:13px">💡 新手提示</div>
-              <div style="font-size:11.5px;color:var(--text-2);line-height:1.9;margin-top:8px">
-                • 首次使用推荐 SSH 隧道，无需暴露公网端口<br>
-                • 连接前先点"测试"确认网络通畅<br>
-                • 控制台密码至少 12 位，含大小写+数字+特殊字符<br>
-                • 遇到问题去"日志"页面排查错误<br>
-                • 想练手去"模拟实战"做故障排查训练
-              </div>
-            </div>
-          </div>
+      <div class="section-title" style="margin-top:0">服务器连接</div>
+      <div class="glass glass-card" style="max-width:600px">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">服务器 IP</label><input class="form-input" id="cfgIP" placeholder="192.168.1.100"></div>
+          <div class="form-group"><label class="form-label">端口</label><input class="form-input" id="cfgPort" placeholder="8080" value="8080"></div>
         </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">认证用户名</label><input class="form-input" id="cfgUser" placeholder="admin"></div>
+          <div class="form-group"><label class="form-label">认证密码</label><input class="form-input" id="cfgPass" type="password" placeholder="••••••••"></div>
+        </div>
+        <div class="form-group"><label class="form-label">连接模式</label>
+          <select class="form-input" id="cfgMode"><option value="direct">直连</option><option value="tunnel">SSH 隧道</option></select>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px">
+          <button class="btn btn-primary" onclick="testConn()">🔌 测试连接</button>
+          <button class="btn btn-secondary" onclick="saveConn()">💾 保存配置</button>
+          <button class="btn btn-primary" onclick="connectServer()">🚀 开始监控</button>
+        </div>
+      </div>
+
+      <div class="section-title">连接状态</div>
+      <div class="glass glass-card" id="connStatus" style="max-width:600px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <span class="status-dot" id="csDot" style="width:12px;height:12px"></span>
+          <span style="font-size:14px;font-weight:600" id="csText">未连接</span>
+        </div>
+        <div id="csDetail" style="font-size:12px;color:var(--text-3);line-height:2"></div>
       </div>
     </section>
 
     <!-- Logs -->
     <section class="pane" id="pane-logs">
-      <div class="logs-wrap">
-        <div class="glass logs-card">
-          <div class="logs-head"><span>📋 运行日志</span><button class="btn btn-ghost" style="padding:5px 12px;font-size:11px" onclick="clearLogs()">清空</button></div>
-          <div class="logs-body" id="logList"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="section-title" style="margin:0">运行日志</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="clearLogs()">🗑️ 清空</button>
+          <button class="btn btn-secondary" onclick="refreshLogs()">🔄 刷新</button>
         </div>
+      </div>
+      <div class="log-container" id="logContainer">
+        <div class="log-line"><span class="log-time">--:--:--</span><span class="log-level info">INFO</span>系统启动，等待连接服务器...</div>
       </div>
     </section>
   </div>
 </div>
 
-<div class="monitor-iframe-wrap" id="monitorWrap"><button class="monitor-close" onclick="closeMonitor()">✕</button><iframe id="monitorFrame" src="/monitor"></iframe></div>
 <div class="toasts" id="toasts"></div>
 
 <script>
 /* ===== State ===== */
 var STATE = null;
-var activeCat = 'all';
-var favOnly = false;
-var favorites = [];
-var labResults = {};
-try { favorites = JSON.parse(localStorage.getItem('shm_favs') || '[]'); } catch(e) { favorites = []; }
-try { labResults = JSON.parse(localStorage.getItem('shm_lab_results') || '{}'); } catch(e) { labResults = {}; }
-var currentLab = null;
-var currentStep = 0;
-var currentScore = 0;
+var chartData = {cpu:[],mem:[],disk:[],max:60};
+var connected = false;
+var pollTimer = null;
 
-/* ===== Command Library ===== */
-var COMMANDS = {
-  linux:{name:'Linux',icon:'🐧',color:'#4ade80',list:[
-    {cmd:'top',desc:'实时查看 CPU、内存、进程负载。',syntax:'top [-d 秒数] [-p PID]',example:'top -d 2  每2秒刷新',level:'easy'},
-    {cmd:'htop',desc:'top 增强版，彩色界面，支持鼠标和进程树。',syntax:'htop [-u 用户] [-p PID]',example:'htop -u root',level:'easy'},
-    {cmd:'ps aux',desc:'查看所有进程，配合 grep 筛选。',syntax:'ps aux | grep 关键词',example:'ps aux | grep nginx',level:'easy'},
-    {cmd:'df -h',desc:'查看磁盘分区使用情况。',syntax:'df -h [路径]',example:'df -h /',level:'easy'},
-    {cmd:'free -h',desc:'查看内存和交换分区。',syntax:'free -h [-s 秒数]',example:'free -h -s 2',level:'easy'},
-    {cmd:'systemctl status',desc:'查看服务运行状态和日志。',syntax:'systemctl status 服务名',example:'systemctl status nginx',level:'easy'},
-    {cmd:'journalctl -xe',desc:'查看系统日志详情。',syntax:'journalctl -xe [-u 服务] [-f]',example:'journalctl -u nginx -f',level:'mid'},
-    {cmd:'tail -f',desc:'实时跟踪文件末尾。',syntax:'tail -f 文件 [-n 行数]',example:'tail -f /var/log/syslog -n 100',level:'easy'},
-    {cmd:'grep',desc:'在文件中搜索文本，支持正则。',syntax:'grep [选项] 关键词 文件',example:'grep -rn "error" /var/log/',level:'mid'},
-    {cmd:'chmod',desc:'修改文件权限。',syntax:'chmod [选项] 权限 文件',example:'chmod 600 ~/.ssh/id_rsa',level:'mid'},
-    {cmd:'chown',desc:'修改文件所有者。',syntax:'chown 用户:组 文件',example:'chown www-data:www-data /var/www',level:'mid'},
-    {cmd:'ss -tulpn',desc:'查看监听端口和进程。',syntax:'ss -tulpn | grep 端口',example:'ss -tulpn | grep :8080',level:'mid'},
-    {cmd:'kill / kill -9',desc:'终止进程。',syntax:'kill [-信号] PID',example:'kill -9 1234',level:'mid'},
-    {cmd:'tar',desc:'打包/解压 tar.gz。',syntax:'tar [选项] 归档 [文件]',example:'tar -xzf file.tar.gz',level:'mid'},
-    {cmd:'awk',desc:'按列处理文本。',syntax:"awk '模式{动作}' 文件",example:"awk '{print $1}' log",level:'hard'},
-    {cmd:'sed',desc:'流编辑器，文本替换/删除。',syntax:'sed [选项] 命令 文件',example:"sed -i 's/old/new/g' f.txt",level:'hard'},
-    {cmd:'crontab -e',desc:'编辑定时任务。',syntax:'crontab [-e|-l|-r]',example:'分 时 日 月 周 命令',level:'mid'},
-    {cmd:'uptime',desc:'查看运行时间和负载。',syntax:'uptime',example:'显示 1/5/15 分钟负载',level:'easy'},
-    {cmd:'dmesg',desc:'查看内核环形缓冲区日志。',syntax:'dmesg [-T] [-H]',example:'dmesg -T | tail -20',level:'mid'},
-    {cmd:'lscpu',desc:'查看 CPU 架构信息。',syntax:'lscpu',example:'查看核心数/线程/缓存',level:'easy'},
-    {cmd:'watch',desc:'周期性执行命令并高亮变化。',syntax:'watch [-n 秒] 命令',example:'watch -n 1 df -h',level:'mid'},
-    {cmd:'nohup',desc:'后台运行不受终端关闭影响。',syntax:'nohup 命令 &',example:'nohup ./app & > app.log',level:'mid'},
-    {cmd:'pstree',desc:'进程树状显示。',syntax:'pstree [-p] [-u]',example:'pstree -p | grep nginx',level:'easy'},
-    {cmd:'env',desc:'查看环境变量。',syntax:'env | grep 关键词',example:'env | grep PATH',level:'easy'},
-    {cmd:'history',desc:'查看命令历史。',syntax:'history [N]',example:'history | grep git',level:'easy'},
-  ]},
-  powershell:{name:'PowerShell',icon:'🔷',color:'#38d9f5',list:[
-    {cmd:'Get-Process',desc:'获取进程列表。',syntax:'Get-Process [-Name 名称]',example:'Get-Process node',level:'easy'},
-    {cmd:'Get-Service',desc:'查看 Windows 服务。',syntax:'Get-Service [-Status 状态]',example:'Get-Service | ? Status -eq Running',level:'easy'},
-    {cmd:'Start/Stop-Service',desc:'启动/停止服务。',syntax:'Start-Service 名; Stop-Service 名',example:'Stop-Service wuauserv',level:'easy'},
-    {cmd:'Get-ChildItem',desc:'列出目录内容（dir/ls别名）。',syntax:'Get-ChildItem [-Recurse]',example:'Get-ChildItem -Recurse *.log',level:'easy'},
-    {cmd:'Select-String',desc:'搜索文本（类似grep）。',syntax:'Select-String -Path f -Pattern k',example:'Select-String *.log "error"',level:'easy'},
-    {cmd:'Get-Content',desc:'读取文件，-Wait实时跟踪。',syntax:'Get-Content f [-Tail N] [-Wait]',example:'Get-Content app.log -Tail 50 -Wait',level:'easy'},
-    {cmd:'Test-NetConnection',desc:'测试网络和端口。',syntax:'Test-NetConnection -ComputerName h -Port p',example:'Test-NetConnection 1.2.3.4 -Port 8080',level:'easy'},
-    {cmd:'Invoke-WebRequest',desc:'发送 HTTP 请求。',syntax:'Invoke-WebRequest -Uri URL',example:'Invoke-WebRequest https://api.example.com',level:'mid'},
-    {cmd:'Get-NetTCPConnection',desc:'查看 TCP 连接。',syntax:'Get-NetTCPConnection [-State s]',example:'Get-NetTCPConnection -State Listen',level:'mid'},
-    {cmd:'Set-ExecutionPolicy',desc:'修改脚本执行策略。',syntax:'Set-ExecutionPolicy 策略',example:'Set-ExecutionPolicy RemoteSigned',level:'mid'},
-    {cmd:'Compress-Archive',desc:'压缩为 ZIP。',syntax:'Compress-Archive -Path s -Dest d.zip',example:'Compress-Archive ./src backup.zip',level:'easy'},
-    {cmd:'Restart-Computer',desc:'重启/关闭计算机。',syntax:'Restart-Computer [-Force]',example:'Restart-Computer -Force',level:'easy'},
-    {cmd:'Get-CimInstance',desc:'WMI/CIM 系统信息。',syntax:'Get-CimInstance 类名',example:'Get-CimInstance Win32_Processor',level:'mid'},
-    {cmd:'Where-Object',desc:'过滤管道对象（? 别名）。',syntax:'... | Where-Object {条件}',example:'Get-Service | ? {$_.Status -eq "Stopped"}',level:'mid'},
-    {cmd:'ForEach-Object',desc:'遍历管道对象（% 别名）。',syntax:'... | ForEach-Object {动作}',example:'Get-Process | % {$_.Name}',level:'mid'},
-    {cmd:'Export-Csv',desc:'导出为 CSV 文件。',syntax:'... | Export-Csv 路径 -NoTypeInformation',example:'Get-Process | Export-Csv procs.csv',level:'easy'},
-  ]},
-  cmd:{name:'CMD',icon:'⬛',color:'#fbbf24',list:[
-    {cmd:'ipconfig',desc:'查看网络配置。',syntax:'ipconfig [/all] [/flushdns]',example:'ipconfig /all',level:'easy'},
-    {cmd:'ping',desc:'测试连通性。',syntax:'ping [-t] [-n 次数] 主机',example:'ping -t 8.8.8.8',level:'easy'},
-    {cmd:'tracert',desc:'追踪路由路径。',syntax:'tracert [-d] 主机',example:'tracert 1.1.1.1',level:'easy'},
-    {cmd:'netstat',desc:'查看网络连接和端口。',syntax:'netstat [-ano]',example:'netstat -ano | findstr :8080',level:'mid'},
-    {cmd:'tasklist',desc:'列出进程。',syntax:'tasklist [/fi 过滤器]',example:'tasklist /fi "imagename eq node.exe"',level:'easy'},
-    {cmd:'taskkill',desc:'终止进程。',syntax:'taskkill /F /PID id 或 /IM 名',example:'taskkill /F /IM node.exe',level:'mid'},
-    {cmd:'sfc /scannow',desc:'扫描修复系统文件。',syntax:'sfc /scannow',example:'需管理员权限',level:'mid'},
-    {cmd:'chkdsk',desc:'检查磁盘错误。',syntax:'chkdsk [盘:] [/f] [/r]',example:'chkdsk C: /f',level:'mid'},
-    {cmd:'dir',desc:'列出目录。',syntax:'dir [路径] [/s]',example:'dir /s *.log',level:'easy'},
-    {cmd:'findstr',desc:'搜索文本。',syntax:'findstr [/i] [/s] 词 文件',example:'dir /s | findstr /i ".log"',level:'easy'},
-    {cmd:'systeminfo',desc:'显示系统信息。',syntax:'systeminfo',example:'systeminfo | findstr /i "os name"',level:'easy'},
-    {cmd:'shutdown',desc:'关机/重启。',syntax:'shutdown [/s|/r|/a] [/t 秒]',example:'shutdown /r /t 0; /a 取消',level:'easy'},
-    {cmd:'net user',desc:'管理用户账户。',syntax:'net user [用户名] [密码] [/add|/delete]',example:'net user admin P@ss /add',level:'mid'},
-    {cmd:'netstat -ano',desc:'查看端口占用和PID。',syntax:'netstat -ano | findstr 端口',example:'netstat -ano | findstr :8080',level:'mid'},
-    {cmd:'wmic',desc:'WMI 命令行管理。',syntax:'wmic 类别 get 属性',example:'wmic process get name,processid',level:'mid'},
-    {cmd:'powercfg',desc:'电源配置管理。',syntax:'powercfg /选项',example:'powercfg /energy 生成能效报告',level:'mid'},
-  ]},
-  network:{name:'网络诊断',icon:'🌐',color:'#a78bfa',list:[
-    {cmd:'curl',desc:'发送 HTTP 请求。',syntax:'curl [选项] URL',example:'curl -I https://example.com',level:'mid'},
-    {cmd:'wget',desc:'下载文件。',syntax:'wget [选项] URL',example:'wget -c URL 断点续传',level:'easy'},
-    {cmd:'nslookup',desc:'查询 DNS。',syntax:'nslookup 域名 [DNS]',example:'nslookup example.com 8.8.8.8',level:'easy'},
-    {cmd:'dig',desc:'详细 DNS 查询。',syntax:'dig [@DNS] 域名 [类型]',example:'dig example.com MX',level:'mid'},
-    {cmd:'mtr',desc:'网络质量诊断。',syntax:'mtr [选项] 主机',example:'mtr --report 1.1.1.1',level:'mid'},
-    {cmd:'nc',desc:'网络瑞士军刀。',syntax:'nc [选项] 主机 端口',example:'nc -zv 1.2.3.4 8080',level:'hard'},
-    {cmd:'tcpdump',desc:'抓包分析。',syntax:'tcpdump [选项] [表达式]',example:'tcpdump -i any port 80 -c 100',level:'hard'},
-    {cmd:'iptables',desc:'Linux 防火墙。',syntax:'iptables [-t 表] [-A] 链 规则',example:'iptables -A INPUT -p tcp --dport 8080 -j DROP',level:'hard'},
-    {cmd:'nmap',desc:'端口扫描。',syntax:'nmap [选项] 目标',example:'nmap -sV -p 1-1000 1.2.3.4',level:'hard'},
-    {cmd:'ip addr',desc:'查看网络接口和IP。',syntax:'ip addr [show 接口]',example:'ip addr show eth0',level:'easy'},
-    {cmd:'traceroute',desc:'追踪路由路径（Linux版）。',syntax:'traceroute 主机',example:'traceroute 8.8.8.8',level:'mid'},
-    {cmd:'whois',desc:'查询域名注册信息。',syntax:'whois 域名',example:'whois example.com',level:'easy'},
-    {cmd:'route',desc:'查看/修改路由表。',syntax:'route [-n] [-A inet6]',example:'route -n',level:'mid'},
-  ]},
-  security:{name:'安全权限',icon:'🔒',color:'#f87171',list:[
-    {cmd:'sudo',desc:'管理员权限执行。',syntax:'sudo 命令',example:'sudo systemctl restart nginx',level:'easy'},
-    {cmd:'ssh-keygen',desc:'生成 SSH 密钥。',syntax:'ssh-keygen [-t 类型] [-b 位]',example:'ssh-keygen -t ed25519 -C "email"',level:'easy'},
-    {cmd:'ssh-copy-id',desc:'复制公钥到远程。',syntax:'ssh-copy-id 用户@主机',example:'ssh-copy-id root@1.2.3.4',level:'easy'},
-    {cmd:'last / lastb',desc:'登录历史。',syntax:'last [-n 条数]',example:'last -n 20',level:'mid'},
-    {cmd:'who / w',desc:'当前登录用户。',syntax:'who; w',example:'w 显示用户在做什么',level:'easy'},
-    {cmd:'openssl',desc:'加密工具集。',syntax:'openssl 子命令 [选项]',example:'openssl req -x509 -newkey rsa:2048 ...',level:'hard'},
-    {cmd:'fail2ban-client',desc:'防暴力破解。',syntax:'fail2ban-client status [监狱]',example:'fail2ban-client status sshd',level:'mid'},
-    {cmd:'chattr',desc:'修改文件隐藏属性。',syntax:'chattr [+|-]属性 文件',example:'chattr +i file 设为不可变',level:'hard'},
-    {cmd:'getfacl/setfacl',desc:'访问控制列表管理。',syntax:'getfacl 文件; setfacl -m u:用户:权限 文件',example:'setfacl -m u:www:r-x /var/www',level:'hard'},
-    {cmd:'usermod',desc:'修改用户属性。',syntax:'usermod [选项] 用户名',example:'usermod -aG docker username 加组',level:'mid'},
-    {cmd:'passwd',desc:'修改用户密码。',syntax:'passwd [用户名]',example:'passwd root',level:'easy'},
-  ]},
-  docker:{name:'Docker',icon:'🐳',color:'#22d3ee',list:[
-    {cmd:'docker ps',desc:'查看运行中容器。',syntax:'docker ps [-a] [-q]',example:'docker ps -a',level:'easy'},
-    {cmd:'docker logs',desc:'查看容器日志。',syntax:'docker logs [选项] 容器',example:'docker logs -f --tail 100 myapp',level:'easy'},
-    {cmd:'docker exec',desc:'在容器内执行命令。',syntax:'docker exec [选项] 容器 命令',example:'docker exec -it myapp bash',level:'easy'},
-    {cmd:'docker compose up',desc:'启动服务栈。',syntax:'docker compose up [-d] [--build]',example:'docker compose up -d --build',level:'easy'},
-    {cmd:'docker compose down',desc:'停止并删除。',syntax:'docker compose down [-v]',example:'docker compose down -v',level:'easy'},
-    {cmd:'docker build',desc:'构建镜像。',syntax:'docker build -t 名:标签 路径',example:'docker build -t myapp:latest .',level:'mid'},
-    {cmd:'docker pull/push',desc:'拉取/推送镜像。',syntax:'docker pull 镜像; docker push 镜像',example:'docker pull nginx:alpine',level:'easy'},
-    {cmd:'docker stop/rm',desc:'停止/删除容器。',syntax:'docker stop 容器; docker rm 容器',example:'docker stop myapp && docker rm myapp',level:'easy'},
-    {cmd:'docker system prune',desc:'清理未使用资源。',syntax:'docker system prune [-a] [--volumes]',example:'docker system prune -a --volumes',level:'mid'},
-    {cmd:'docker stats',desc:'实时资源监控。',syntax:'docker stats [容器]',example:'docker stats',level:'easy'},
-    {cmd:'docker inspect',desc:'查看容器/镜像详细信息。',syntax:'docker inspect 对象',example:'docker inspect myapp | grep IPAddress',level:'mid'},
-    {cmd:'docker cp',desc:'容器与主机间复制文件。',syntax:'docker cp 源 目标',example:'docker cp myapp:/etc/nginx.conf ./',level:'easy'},
-    {cmd:'docker images',desc:'列出本地镜像。',syntax:'docker images',example:'docker images | grep nginx',level:'easy'},
-    {cmd:'docker network',desc:'Docker 网络管理。',syntax:'docker network ls|create|inspect',example:'docker network create mynet',level:'mid'},
-    {cmd:'docker volume',desc:'数据卷管理。',syntax:'docker volume ls|create|rm',example:'docker volume create dbdata',level:'mid'},
-  ]},
-  git:{name:'Git',icon:'📦',color:'#fbbf24',list:[
-    {cmd:'git clone',desc:'克隆仓库。',syntax:'git clone URL [目录]',example:'git clone https://gitee.com/u/r.git',level:'easy'},
-    {cmd:'git status',desc:'查看状态。',syntax:'git status',example:'查看修改/新增文件',level:'easy'},
-    {cmd:'git add',desc:'添加到暂存区。',syntax:'git add <文件|.>',example:'git add .',level:'easy'},
-    {cmd:'git commit',desc:'提交。',syntax:'git commit -m "信息"',example:'git commit -m "feat:新增面板"',level:'easy'},
-    {cmd:'git push',desc:'推送到远程。',syntax:'git push [远程] [分支] [-u]',example:'git push -u origin main',level:'easy'},
-    {cmd:'git pull',desc:'拉取更新。',syntax:'git pull [远程] [分支]',example:'git pull origin main',level:'easy'},
-    {cmd:'git branch',desc:'分支管理。',syntax:'git branch [-a] [-d 分支]',example:'git branch feature/new',level:'mid'},
-    {cmd:'git switch',desc:'切换分支。',syntax:'git switch 分支',example:'git switch -c feature/new',level:'easy'},
-    {cmd:'git merge',desc:'合并分支。',syntax:'git merge 分支',example:'git merge feature/new',level:'mid'},
-    {cmd:'git log',desc:'提交历史。',syntax:'git log [--oneline] [--graph]',example:'git log --oneline --graph -10',level:'easy'},
-    {cmd:'git diff',desc:'查看改动。',syntax:'git diff [文件] [--staged]',example:'git diff',level:'mid'},
-    {cmd:'git stash',desc:'临时保存改动。',syntax:'git stash [push|pop|list]',example:'git stash push -m "wip"',level:'mid'},
-    {cmd:'git reset',desc:'撤销提交。',syntax:'git reset [--soft|--hard] [提交]',example:'git reset --hard HEAD~1 (危险)',level:'hard'},
-    {cmd:'git rebase',desc:'变基合并提交。',syntax:'git rebase [-i] 分支',example:'git rebase -i HEAD~3 交互式',level:'hard'},
-    {cmd:'git cherry-pick',desc:'拣选指定提交。',syntax:'git cherry-pick 提交哈希',example:'git cherry-pick abc1234',level:'mid'},
-    {cmd:'git reflog',desc:'查看所有操作历史（救命用）。',syntax:'git reflog',example:'找回误删的分支/提交',level:'mid'},
-    {cmd:'git remote',desc:'远程仓库管理。',syntax:'git remote -v|add|set-url',example:'git remote set-url origin URL',level:'easy'},
-    {cmd:'git tag',desc:'标签管理。',syntax:'git tag [-a] 标签名 [-m 说明]',example:'git tag -a v1.0 -m "release"',level:'mid'},
-    {cmd:'git blame',desc:'查看每行代码的修改者。',syntax:'git blame 文件',example:'git blame main.go',level:'mid'},
-  ]},
-  database:{name:'数据库',icon:'🗄️',color:'#4ade80',list:[
-    {cmd:'mysql -u -p',desc:'连接 MySQL。',syntax:'mysql -u 用户 -p [库]',example:'mysql -u root -p mydb',level:'easy'},
-    {cmd:'SHOW DATABASES;',desc:'列出数据库。',syntax:'SHOW DATABASES;',example:'在客户端执行',level:'easy'},
-    {cmd:'SHOW TABLES;',desc:'列出表。',syntax:'SHOW TABLES;',example:'先 USE 库名;',level:'easy'},
-    {cmd:'SELECT',desc:'查询数据。',syntax:'SELECT 列 FROM 表 [WHERE] [LIMIT]',example:'SELECT * FROM users LIMIT 10;',level:'easy'},
-    {cmd:'mysqldump',desc:'导出备份。',syntax:'mysqldump -u u -p 库 > 文件.sql',example:'mysqldump -u root -p mydb > bk.sql',level:'mid'},
-    {cmd:'redis-cli',desc:'连接 Redis。',syntax:'redis-cli [-h 主机] [-p 端口]',example:'redis-cli -h 127.0.0.1 -p 6379',level:'easy'},
-    {cmd:'redis-cli INFO',desc:'Redis 信息统计。',syntax:'redis-cli INFO [section]',example:'redis-cli INFO memory',level:'mid'},
-    {cmd:'EXPLAIN',desc:'分析 SQL 执行计划。',syntax:'EXPLAIN SELECT ...',example:'EXPLAIN SELECT * FROM users WHERE id=1',level:'mid'},
-    {cmd:'CREATE INDEX',desc:'创建索引。',syntax:'CREATE INDEX 名 ON 表(列)',example:'CREATE INDEX idx_name ON users(name)',level:'mid'},
-    {cmd:'mongosh',desc:'连接 MongoDB。',syntax:'mongosh "URI"',example:'mongosh "mongodb://localhost:27017"',level:'mid'},
-    {cmd:'psql',desc:'连接 PostgreSQL。',syntax:'psql -U 用户 -d 库',example:'psql -U postgres -d mydb',level:'mid'},
-    {cmd:'redis-cli KEYS',desc:'Redis 查找键（生产慎用）。',syntax:'redis-cli KEYS 模式',example:'redis-cli KEYS "user:*" 用 SCAN 替代',level:'mid'},
-  ]},
-  monitor:{name:'监控运维',icon:'📊',color:'#6c8cff',list:[
-    {cmd:'systemctl start/stop/restart',desc:'管理服务。',syntax:'systemctl 动作 服务',example:'systemctl restart nginx',level:'easy'},
-    {cmd:'systemctl enable/disable',desc:'开机自启。',syntax:'systemctl enable 服务',example:'systemctl enable nginx',level:'easy'},
-    {cmd:'vmstat',desc:'虚拟内存统计。',syntax:'vmstat [延迟] [次数]',example:'vmstat 1 5',level:'mid'},
-    {cmd:'iostat',desc:'磁盘 I/O 统计。',syntax:'iostat [-x] [延迟]',example:'iostat -xz 1',level:'mid'},
-    {cmd:'sar',desc:'系统活动报告。',syntax:'sar [-u] [-r] [延迟]',example:'sar -u 1 5; sar -r',level:'hard'},
-    {cmd:'dmesg',desc:'内核日志。',syntax:'dmesg [-T] | tail',example:'dmesg -T | tail -30',level:'mid'},
-    {cmd:'lsof',desc:'打开的文件/连接。',syntax:'lsof [-i 端口] [-p PID]',example:'lsof -i :8080',level:'mid'},
-    {cmd:'strace',desc:'跟踪系统调用。',syntax:'strace [-p PID] 命令',example:'strace -p 1234',level:'hard'},
-    {cmd:'pidstat',desc:'进程级资源统计。',syntax:'pidstat [选项] [延迟]',example:'pidstat -u -r -d 1 5',level:'mid'},
-    {cmd:'mpstat',desc:'CPU 核级统计。',syntax:'mpstat [-P ALL] [延迟]',example:'mpstat -P ALL 1',level:'mid'},
-    {cmd:'hostnamectl',desc:'查看/设置主机名。',syntax:'hostnamectl [set-hostname 名]',example:'hostnamectl set-hostname myserver',level:'easy'},
-    {cmd:'timedatectl',desc:'时间和时区管理。',syntax:'timedatectl [set-timezone 时区]',example:'timedatectl set-timezone Asia/Shanghai',level:'easy'},
-  ]},
-  text:{name:'文本处理',icon:'📝',color:'#a78bfa',list:[
-    {cmd:'cat',desc:'查看文件内容。',syntax:'cat [选项] 文件',example:'cat -n file.txt',level:'easy'},
-    {cmd:'less',desc:'分页查看大文件。',syntax:'less 文件',example:'按q退出, /搜索',level:'easy'},
-    {cmd:'head / tail',desc:'查看开头/末尾。',syntax:'head -n N 文件; tail -n N 文件',example:'tail -f file.log',level:'easy'},
-    {cmd:'wc',desc:'统计行/词/字符。',syntax:'wc [-l] [-w] [-c] 文件',example:'wc -l file.txt',level:'easy'},
-    {cmd:'sort',desc:'排序。',syntax:'sort [选项] 文件',example:'sort -n -r nums.txt',level:'easy'},
-    {cmd:'uniq',desc:'去重（需先sort）。',syntax:'uniq [选项] 文件',example:'sort f | uniq -c',level:'mid'},
-    {cmd:'cut',desc:'按分隔符提取列。',syntax:'cut -d 分隔 -f 列 文件',example:"cut -d: -f1 /etc/passwd",level:'mid'},
-    {cmd:'tr',desc:'字符转换。',syntax:'tr [选项] 源 目标',example:'cat f | tr a-z A-Z',level:'mid'},
-    {cmd:'xargs',desc:'参数传递。',syntax:'命令 | xargs 命令',example:'cat urls.txt | xargs wget',level:'hard'},
-    {cmd:'jq',desc:'JSON 处理。',syntax:"jq [选项] '过滤器' 文件",example:"cat d.json | jq '.users[].name'",level:'hard'},
-    {cmd:'diff',desc:'比较文件差异。',syntax:'diff [选项] 文件1 文件2',example:'diff -u old.txt new.txt',level:'mid'},
-    {cmd:'tee',desc:'同时输出到屏幕和文件。',syntax:'命令 | tee 文件',example:'ls | tee output.txt',level:'easy'},
-    {cmd:'paste',desc:'合并文件列。',syntax:'paste 文件1 文件2',example:'paste a.txt b.txt',level:'mid'},
-    {cmd:'comm',desc:'比较两个有序文件。',syntax:'comm 文件1 文件2',example:'comm -12 a.txt b.txt 交集',level:'hard'},
-  ]},
-  disk:{name:'磁盘文件',icon:'💾',color:'#fbbf24',list:[
-    {cmd:'lsblk',desc:'列出块设备。',syntax:'lsblk [-f]',example:'lsblk -f 显示文件系统',level:'easy'},
-    {cmd:'mount / umount',desc:'挂载/卸载。',syntax:'mount 设备 点; umount 点',example:'mount /dev/sdb1 /mnt/data',level:'mid'},
-    {cmd:'du -sh',desc:'查看目录大小。',syntax:'du -sh [路径]',example:'du -sh /var/log/*',level:'easy'},
-    {cmd:'ln -s',desc:'创建软链接。',syntax:'ln -s 源 链接',example:'ln -s /opt/app /var/www/app',level:'mid'},
-    {cmd:'find',desc:'查找文件。',syntax:'find 路径 [选项]',example:'find / -name "*.log" -size +100M',level:'mid'},
-    {cmd:'rsync',desc:'高效同步备份。',syntax:'rsync [选项] 源 目标',example:'rsync -avz --delete ./src/ host:/backup/',level:'hard'},
-    {cmd:'fdisk',desc:'磁盘分区表操作。',syntax:'fdisk [-l] 设备',example:'fdisk -l /dev/sda',level:'hard'},
-    {cmd:'mkfs',desc:'格式化文件系统。',syntax:'mkfs -t 类型 设备',example:'mkfs -t ext4 /dev/sdb1',level:'hard'},
-    {cmd:'fsck',desc:'文件系统检查修复。',syntax:'fsck [-y] 设备',example:'fsck -y /dev/sdb1 (需卸载)',level:'hard'},
-    {cmd:'iotop',desc:'磁盘 I/O 进程监控。',syntax:'iotop [-o] [-d 秒]',example:'iotop -o 只显示有IO的进程',level:'mid'},
-  ]}
-};
-
-/* ===== Scenarios (模拟实战) ===== */
-var SCENARIOS = [
-  {id:'cpu_high',title:'CPU 飙高排查',icon:'🔥',difficulty:'入门',color:'#f87171',desc:'服务器 CPU 突然飙升到 95%，业务响应变慢，你该怎么办？',steps:[
-    {q:'监控告警显示 CPU 使用率 95%，第一步应该做什么？',opts:[
-      {t:'直接重启服务器',c:false,e:'重启会丢失现场，无法定位根因。运维第一原则：先保留现场，再排查。'},
-      {t:'用 top/htop 查看哪个进程占 CPU',c:true,e:'正确！先定位高负载进程，观察 PID、用户、CPU%、内存%，再决定下一步。'},
-      {t:'立即拔网线断网',c:false,e:'断网影响业务，且不能解决 CPU 问题。'},
-      {t:'关机等待冷却',c:false,e:'关机不能解决问题，还会导致业务中断。'}
-    ]},
-    {q:'top 看到一个未知进程占 90% CPU，下一步？',opts:[
-      {t:'直接 kill -9 杀掉',c:false,e:'太鲁莽！可能是重要业务进程，先确认是什么。'},
-      {t:'用 ps -fp PID 查看进程详情，确认是什么程序',c:true,e:'正确！查看进程路径、启动用户、启动参数，判断是业务进程还是异常进程。'},
-      {t:'不管它，等它自己降下来',c:false,e:'CPU 95% 会影响业务，不能被动等待。'},
-      {t:'重启整个服务器',c:false,e:'还是没定位根因，重启后可能复现。'}
-    ]},
-    {q:'确认是陌生的挖矿进程，下一步？',opts:[
-      {t:'kill 掉就完事了',c:false,e:'只杀进程不清除来源，会再次启动。需要排查定时任务、启动脚本、SSH 密钥。'},
-      {t:'kill 进程 → 查定时任务和启动项 → 清除后门 → 修复漏洞',c:true,e:'正确！完整流程：终止进程→清除持久化（crontab/systemd）→排查入侵入口→修补漏洞。'},
-      {t:'格式化重装系统',c:false,e:'太极端，先尝试清除和修复，同时做好数据备份。'},
-      {t:'断网后不管了',c:false,e:'断网只是隔离，不清除后门，一联网就复发。'}
-    ]},
-    {q:'排查发现是 Redis 未设密码被入侵，最终修复方案？',opts:[
-      {t:'给 Redis 设密码 + 绑定 127.0.0.1 + 升级版本',c:true,e:'正确！Redis 未授权访问是常见入侵入口。设密码、绑内网、禁用危险命令、升级到最新版。'},
-      {t:'把 Redis 端口改成别的就行',c:false,e:'改端口只是隐蔽，不是安全，扫描器依然能找到。'},
-      {t:'卸载 Redis',c:false,e:'业务可能依赖 Redis，应该加固而不是卸载。'},
-      {t:'加防火墙只允许自己 IP',c:false,e:'这只是临时措施，根本问题是 Redis 未认证。'}
-    ]}
-  ]},
-  {id:'site_down',title:'网站无法访问',icon:'🌐',difficulty:'入门',color:'#38d9f5',desc:'用户反馈网站打不开，502 错误，如何一步步排查？',steps:[
-    {q:'网站返回 502 Bad Gateway，首先排查什么？',opts:[
-      {t:'直接重启服务器',c:false,e:'502 通常是反向代理连不上后端，先确认后端服务状态。'},
-      {t:'检查 Nginx/Apache 反向代理和后端服务状态',c:true,e:'正确！502 = 网关收到无效响应。先看 Nginx 状态，再看后端服务（如 Node/Java/Python）是否在运行。'},
-      {t:'检查域名是否过期',c:false,e:'域名过期通常是 DNS 解析失败，不是 502。'},
-      {t:'换个浏览器试试',c:false,e:'502 是服务端错误，和浏览器无关。'}
-    ]},
-    {q:'systemctl status 发现后端服务已停止，下一步？',opts:[
-      {t:'启动服务，能跑就行',c:false,e:'只启动不查原因，可能再次崩溃。先看日志找崩溃原因。'},
-      {t:'先看 journalctl 日志找崩溃原因，修复后再启动',c:true,e:'正确！查看服务日志（journalctl -u 服务名），找到 OOM/配置错误/依赖缺失等根因，修复后启动。'},
-      {t:'删除服务重装',c:false,e:'太激进，先看日志定位问题。'},
-      {t:'换台服务器部署',c:false,e:'没解决根本问题，换环境可能依然崩溃。'}
-    ]},
-    {q:'日志显示后端 OOM（内存溢出）被 kill，怎么处理？',opts:[
-      {t:'加内存就完事了',c:false,e:'加内存是治标，可能存在内存泄漏，需要排查代码。'},
-      {t:'限制服务内存上限 + 排查内存泄漏 + 必要时加内存',c:true,e:'正确！用 systemd MemoryMax 限制上限防止拖垮系统，排查代码内存泄漏，同时评估是否需要扩容。'},
-      {t:'设置定时重启服务',c:false,e:'定时重启是临时规避，不是修复，会导致业务中断。'},
-      {t:'关闭其他服务腾内存',c:false,e:'只是临时缓解，根因是内存泄漏或配置不当。'}
-    ]}
-  ]},
-  {id:'disk_full',title:'磁盘空间爆满',icon:'💾',difficulty:'入门',color:'#fbbf24',desc:'磁盘告警 98%，服务随时可能崩溃，如何快速清理？',steps:[
-    {q:'磁盘使用率 98%，第一步做什么？',opts:[
-      {t:'直接删 /var/log 下所有文件',c:false,e:'盲目删日志可能丢失重要排障信息，先看哪个目录占空间。'},
-      {t:'用 du -sh /* 或 du -sh /var/* 定位大目录',c:true,e:'正确！先定位空间占用：du -sh /* 看根目录，再逐层深入，找到真正的大户。'},
-      {t:'重启服务器释放空间',c:false,e:'重启不会释放磁盘空间，临时文件可能还在。'},
-      {t:'格式化数据盘',c:false,e:'极端操作，会丢失数据，绝对不能第一步就做。'}
-    ]},
-    {q:'发现 /var/log 占了 80G，大部分是 nginx 日志，怎么清理？',opts:[
-      {t:'rm -rf /var/log/* 全部删除',c:false,e:'太粗暴！可能删除系统日志和其他服务日志。只清理目标日志。'},
-      {t:'用 truncate 或 echo 清空大日志文件，配置 logrotate 轮转',c:true,e:'正确！echo "" > 大文件 清空（不删除文件，不影响进程写入），然后配置 logrotate 自动轮转压缩。'},
-      {t:'停止 nginx 再删日志',c:false,e:'不需要停服务，truncate 可以在服务运行时安全清空。'},
-      {t:'把日志目录移到别的盘',c:false,e:'可以作为长期方案，但紧急情况先清空。'}
-    ]},
-    {q:'清理后空间只释放了 10G，还有 70G 找不到，可能原因？',opts:[
-      {t:'有已删除但被进程占用的文件（deleted but open）',c:true,e:'正确！用 lsof | grep deleted 查找已删除但被进程持有的文件，重启对应进程或服务才能真正释放空间。'},
-      {t:'磁盘坏道',c:false,e:'坏道不会占用空间，且会有 IO 错误。'},
-      {t:'文件系统损坏',c:false,e:'文件系统损坏会报错，不是隐藏占用。'},
-      {t:'计算错误',c:false,e:'du 和 df 差异通常就是 deleted but open 文件导致的。'}
-    ]}
-  ]},
-  {id:'ssh_fail',title:'SSH 登录失败',icon:'🔑',difficulty:'进阶',color:'#a78bfa',desc:'SSH 连接被拒绝，无法远程登录服务器，如何排查？',steps:[
-    {q:'SSH 连接提示 Connection refused，首先确认什么？',opts:[
-      {t:'服务器是否宕机',c:false,e:'Connection refused 说明网络通但端口没监听，不是宕机（宕机是 timeout）。'},
-      {t:'sshd 服务是否运行、22端口是否监听',c:true,e:'正确！refused = 网络可达但端口关闭。用 systemctl status sshd 和 ss -tulpn | grep :22 确认。'},
-      {t:'密码是否正确',c:false,e:'密码错误是 Permission denied，不是 refused。'},
-      {t:'DNS 是否解析',c:false,e:'DNS 问题是无法解析，不是 refused。'}
-    ]},
-    {q:'sshd 运行正常但还是连不上，可能原因？',opts:[
-      {t:'防火墙拦截了 22 端口',c:true,e:'正确！检查 iptables/ufw/安全组是否放行 22 端口。云服务器还要看云平台安全组规则。'},
-      {t:'服务器内存不足',c:false,e:'内存不足不会导致 connection refused。'},
-      {t:'SSH 客户端版本太旧',c:false,e:'客户端旧会报协议错误，不是 refused。'},
-      {t:'服务器时区不对',c:false,e:'时区不影响 SSH 连接。'}
-    ]},
-    {q:'能连上但提示 Permission denied (publickey)，如何处理？',opts:[
-      {t:'重置服务器密码',c:false,e:'这是密钥认证失败，不是密码问题。'},
-      {t:'检查本地私钥权限(~600)、服务器 authorized_keys、sshd 配置',c:true,e:'正确！依次检查：本地私钥权限必须600、服务器 ~/.ssh/authorized_keys 存在且权限正确、sshd_config 是否允许密钥认证。'},
-      {t:'删除 ~/.ssh 重新生成',c:false,e:'可能丢失已配置的密钥，先排查再操作。'},
-      {t:'换个网络试试',c:false,e:'网络不影响认证失败。'}
-    ]}
-  ]},
-  {id:'mem_leak',title:'内存泄漏排查',icon:'📈',difficulty:'进阶',color:'#6c8cff',desc:'服务内存持续增长不释放，几天后 OOM，如何定位泄漏点？',steps:[
-    {q:'内存持续增长，第一步用什么工具观察？',opts:[
-      {t:'直接重启服务',c:false,e:'重启只是临时缓解，泄漏点还在。先观察趋势和进程。'},
-      {t:'用 top/htop 观察哪个进程内存增长，记录 RES 列',c:true,e:'正确！top 按 M 排序看内存，关注 RES（实际物理内存）。持续增长的进程就是嫌疑对象。'},
-      {t:'加内存条',c:false,e:'加内存只是延缓 OOM，泄漏依然存在。'},
-      {t:'关闭 swap',c:false,e:'swap 和内存泄漏无关。'}
-    ]},
-    {q:'确认是 Java 服务内存增长，用什么工具分析？',opts:[
-      {t:'用 jmap 导出堆快照，MAT 分析对象占用',c:true,e:'正确！jmap -dump:format=b,file=heap.hprof PID 导出堆，用 Eclipse MAT 或 JProfiler 分析大对象和泄漏点。'},
-      {t:'用 top 看就行',c:false,e:'top 只能看到总量，无法定位代码中的泄漏对象。'},
-      {t:'重启后观察',c:false,e:'重启后泄漏会复现，但无法定位具体代码。'},
-      {t:'修改 JVM 堆大小',c:false,e:'调整堆大小只是参数调优，不是排查泄漏。'}
-    ]},
-    {q:'分析发现是缓存无上限增长，修复方案？',opts:[
-      {t:'给缓存加过期时间和最大容量（LRU 淘汰）',c:true,e:'正确！缓存必须设 TTL 和 max-size，用 LRU/LFU 策略淘汰，否则内存必然耗尽。Guava Cache/Caffeine 都支持。'},
-      {t:'定时清空缓存',c:false,e:'定时清空会导致缓存击穿，且清空瞬间可能有性能抖动。'},
-      {t:'不用缓存了',c:false,e:'缓存是性能优化手段，应该合理配置而不是放弃。'},
-      {t:'加更多内存',c:false,e:'无上限缓存加多少内存都会满。'}
-    ]}
-  ]},
-  {id:'db_timeout',title:'数据库连接超时',icon:'🗄️',difficulty:'高级',color:'#4ade80',desc:'业务报数据库连接超时，查询缓慢，如何系统排查？',steps:[
-    {q:'数据库连接超时，首先检查什么？',opts:[
-      {t:'数据库服务是否存活、端口是否通',c:true,e:'正确！先确认基础连通性：systemctl status mysql、telnet/nc 测试端口、查看错误日志。'},
-      {t:'直接重启数据库',c:false,e:'重启会中断业务，且可能丢失排查现场。先确认状态。'},
-      {t:'优化 SQL 语句',c:false,e:'SQL 优化是后续步骤，先确认服务是否正常。'},
-      {t:'升级数据库配置',c:false,e:'没定位问题前升级配置是盲目操作。'}
-    ]},
-    {q:'数据库存活但连接数满了（Too many connections），怎么处理？',opts:[
-      {t:'kill 所有连接',c:false,e:'kill 所有连接会中断业务，先看哪些是慢查询/空闲连接。'},
-      {t:'查看 processlist 找长事务/慢查询，kill 异常连接，临时调大 max_connections',c:true,e:'正确！SHOW PROCESSLIST 找 Sleep 很久的连接和慢查询，kill 异常的，临时调大 max_connections 应急，长期优化连接池和 SQL。'},
-      {t:'重启数据库释放连接',c:false,e:'重启是最后手段，先尝试 kill 异常连接。'},
-      {t:'不管它，等连接自动释放',c:false,e:'连接满了新连接进不来，业务持续报错。'}
-    ]},
-    {q:'慢查询导致连接堆积，长期优化方案？',opts:[
-      {t:'加索引 + 优化 SQL + 配置慢查询日志 + 连接池合理设置',c:true,e:'正确！系统方案：开启 slow_query_log 定位慢SQL、EXPLAIN 分析加索引、优化业务SQL、连接池设置合理的最大连接数和超时。'},
-      {t:'只加索引就行',c:false,e:'加索引是一部分，还需要 SQL 优化和连接池配置。'},
-      {t:'定时重启数据库',c:false,e:'定时重启会导致业务中断，不是解决方案。'},
-      {t:'换更大的服务器',c:false,e:'硬件升级不能替代 SQL 和架构优化。'}
-    ]}
-  ]},
-  {id:'nginx_502',title:'Nginx 502 排查',icon:'🔴',difficulty:'入门',color:'#fb7185',desc:'网站突然 502 Bad Gateway，用户无法访问，如何快速定位和恢复？',steps:[
-    {q:'502 Bad Gateway 和 504 Gateway Timeout 的区别是什么？',opts:[
-      {t:'502是后端直接拒绝/崩溃，504是后端响应超时',c:true,e:'正确！502 = 网关从后端收到无效响应（后端进程挂了/连接被拒）；504 = 网关等后端响应超时（后端还活着但太慢）。'},
-      {t:'两者完全一样',c:false,e:'不一样，成因和排查方向不同。'},
-      {t:'502是前端问题，504是后端问题',c:false,e:'两者都是网关层错误，都和后端有关。'},
-      {t:'502是网络断了，504是服务器宕机',c:false,e:'理解反了，502通常是后端进程挂了，504是后端响应慢。'}
-    ]},
-    {q:'确认是 502 后，第一步检查什么？',opts:[
-      {t:'检查 Nginx 错误日志和后端服务状态',c:true,e:'正确！tail -f /var/log/nginx/error.log 看具体报错（connect() failed / upstream prematurely closed），同时 systemctl status 后端服务。'},
-      {t:'直接重启 Nginx',c:false,e:'重启 Nginx 不能解决后端挂了的问题。'},
-      {t:'检查域名 DNS',c:false,e:'DNS 问题是无法解析，不是 502。'},
-      {t:'清除浏览器缓存',c:false,e:'502 是服务端错误，和浏览器缓存无关。'}
-    ]},
-    {q:'日志显示 connect() failed (111: Connection refused)，说明什么？',opts:[
-      {t:'后端服务没启动或没在对应端口监听',c:true,e:'正确！Connection refused = 端口可达但没有程序监听。用 ss -tulpn | grep 端口 确认，然后启动后端服务。'},
-      {t:'Nginx 配置错了',c:false,e:'配置错误通常是 no live upstreams 或 host not found。'},
-      {t:'服务器内存满了',c:false,e:'内存满是 OOM，日志会显示 out of memory。'},
-      {t:'网络不通',c:false,e:'网络不通是 timeout，不是 refused。'}
-    ]},
-    {q:'后端服务正常但偶尔 502，日志显示 upstream prematurely closed connection，可能原因？',opts:[
-      {t:'后端处理时间超过 Nginx 的 proxy_read_timeout，或后端进程被 OOM kill',c:true,e:'正确！两种常见原因：① 后端响应太慢超过超时（默认60s）；② 后端进程因 OOM 被系统 kill。调整 proxy_read_timeout 或排查内存。'},
-      {t:'Nginx 版本太旧',c:false,e:'版本旧不会导致间歇性 502。'},
-      {t:'磁盘空间不足',c:false,e:'磁盘满会影响日志写入，但不是 502 的直接原因。'},
-      {t:'客户端网络不稳定',c:false,e:'客户端问题不会导致 502（502 是服务器到后端的问题）。'}
-    ]}
-  ]},
-  {id:'redis_timeout',title:'Redis 连接超时',icon:'🟡',difficulty:'进阶',color:'#fbbf24',desc:'业务报 Redis 连接超时，缓存命中率暴跌，如何排查和恢复？',steps:[
-    {q:'Redis 连接超时，首先确认什么？',opts:[
-      {t:'Redis 进程是否存活、端口是否监听、内存是否满',c:true,e:'正确！systemctl status redis、ss -tulpn | grep 6379、redis-cli info memory 看 used_memory 和 maxmemory。'},
-      {t:'直接重启 Redis',c:false,e:'重启会丢失缓存数据（如果没持久化），先排查原因。'},
-      {t:'清空所有缓存',c:false,e:'清空缓存会导致缓存雪崩，数据库压力骤增。'},
-      {t:'升级 Redis 版本',c:false,e:'版本升级不是应急手段。'}
-    ]},
-    {q:'Redis 内存达到 maxmemory，导致写入被拒，怎么处理？',opts:[
-      {t:'检查淘汰策略，设置合理的 maxmemory-policy（如 allkeys-lru），必要时临时调大 maxmemory',c:true,e:'正确！默认 noeviction 会拒绝写入。生产环境建议 allkeys-lru 或 volatile-lru。临时调大 maxmemory 应急，长期优化缓存大小和过期策略。'},
-      {t:'直接 FLUSHALL 清空',c:false,e:'FLUSHALL 会导致缓存雪崩，数据库瞬间被打满。'},
-      {t:'关闭 Redis 持久化',c:false,e:'持久化和内存满无关，关闭反而增加数据丢失风险。'},
-      {t:'不管它，等自动释放',c:false,e:'noeviction 策略下不会自动释放，写入持续失败。'}
-    ]},
-    {q:'Redis 存活但响应极慢，info 显示 blocked_clients 很多，可能原因？',opts:[
-      {t:'有大 key 操作（如 KEYS *、HGETALL 大哈希）或持久化 fork 阻塞',c:true,e:'正确！KEYS * 会阻塞主线程；RDB/AOF 重写时 fork 大内存进程会卡顿。用 SCAN 替代 KEYS，优化大 key，调整持久化策略。'},
-      {t:'Redis 版本太旧',c:false,e:'版本旧不会突然变慢。'},
-      {t:'网络带宽不够',c:false,e:'网络问题是连接超时，不是响应慢。'},
-      {t:'CPU 核心数太少',c:false,e:'Redis 单线程，CPU 通常不是瓶颈，除非有大 key 操作。'}
-    ]},
-    {q:'Redis 主从同步中断，从库数据过期，怎么恢复？',opts:[
-      {t:'检查主从网络和复制积压缓冲区，必要时全量重新同步',c:true,e:'正确！先看主从网络连通性，repl-backlog-size 是否足够。如果偏移量差距太大，从库执行 SLAVEOF NO ONE 再 SLAVEOF 主库 触发全量同步。'},
-      {t:'删除从库重建',c:false,e:'可以但不是首选，先尝试增量恢复。'},
-      {t:'切换到从库为主库',c:false,e:'从库数据过期，切换会导致数据丢失。'},
-      {t:'关闭主从同步',c:false,e:'关闭同步失去高可用，不是解决方案。'}
-    ]}
-  ]},
-  {id:'mysql_slow',title:'MySQL 慢查询',icon:'🟠',difficulty:'进阶',color:'#fb923c',desc:'数据库 CPU 飙高，查询缓慢，业务接口超时，如何系统优化？',steps:[
-    {q:'MySQL 响应慢，第一步用什么定位？',opts:[
-      {t:'开启慢查询日志，用 mysqldumpslow 或 pt-query-digest 分析 TOP 慢 SQL',c:true,e:'正确！SET GLOBAL slow_query_log=1; long_query_time=1; 然后用 mysqldumpslow -s t 或 pt-query-digest 找出耗时最长的 SQL。'},
-      {t:'直接重启 MySQL',c:false,e:'重启不能解决慢查询，且会中断业务。'},
-      {t:'升级 MySQL 配置',c:false,e:'没定位问题前调参是盲目操作。'},
-      {t:'增加从库',c:false,e:'加从库是读写分离方案，但慢查询本身还在。'}
-    ]},
-    {q:'慢查询日志显示一条 SQL 扫描 100 万行，EXPLAIN 显示 type=ALL，说明什么？',opts:[
-      {t:'没有走索引，全表扫描，需要加索引或优化 SQL',c:true,e:'正确！type=ALL 是全表扫描，性能最差。用 EXPLAIN 看 key 列，给 WHERE/JOIN/ORDER BY 字段加合适索引，避免 SELECT * 和函数包裹索引列。'},
-      {t:'数据量太大，必须分库分表',c:false,e:'100万行不算大，加索引通常就能解决，分库分表是后期方案。'},
-      {t:'MySQL 配置太低',c:false,e:'配置低不会导致全表扫描，这是 SQL 和索引问题。'},
-      {t:'正常现象，不用管',c:false,e:'全表扫描会随数据增长越来越慢，必须优化。'}
-    ]},
-    {q:'加了索引还是慢，EXPLAIN 显示索引没生效，可能原因？',opts:[
-      {t:'索引列上用了函数/运算、隐式类型转换、或 LIKE 前导通配符',c:true,e:'正确！常见索引失效：WHERE DATE(create_time)=...、WHERE id="1"（字符串转数字）、LIKE "%abc"。改写 SQL 避免这些模式。'},
-      {t:'索引建错了表',c:false,e:'索引不会建错表，检查是否在正确的列上。'},
-      {t:'MySQL 不支持该索引类型',c:false,e:'普通 B-tree 索引都支持，除非是特殊类型。'},
-      {t:'需要重启 MySQL 生效',c:false,e:'索引创建后立即生效，不需要重启。'}
-    ]},
-    {q:'慢查询优化后，连接数还是经常满（Too many connections），怎么处理？',opts:[
-      {t:'检查连接池配置、空闲连接超时、长事务，合理设置 max_connections 和 wait_timeout',c:true,e:'正确！连接满通常是：连接池过大、空闲连接不释放（wait_timeout 太长）、长事务占用连接。调小 wait_timeout、优化连接池 maxActive、监控长事务。'},
-      {t:'无限调大 max_connections',c:false,e:'连接数过大消耗内存，可能导致 OOM，需要合理设置。'},
-      {t:'定时重启 MySQL',c:false,e:'重启是临时缓解，根因还在。'},
-      {t:'关闭部分业务',c:false,e:'不是技术解决方案。'}
-    ]}
-  ]},
-  {id:'docker_exit',title:'Docker 容器异常退出',icon:'🔵',difficulty:'入门',color:'#38bdf8',desc:'Docker 容器启动后立即退出，服务不可用，如何排查？',steps:[
-    {q:'容器启动后立即退出，第一步看什么？',opts:[
-      {t:'docker logs 查看容器日志，docker inspect 看退出码',c:true,e:'正确！docker logs <容器名> 看应用报错，docker inspect -f "{{.State.ExitCode}}" 看退出码（0=正常退出，1=应用错误，137=OOM被kill，143=收到SIGTERM）。'},
-      {t:'删除容器重建',c:false,e:'重建前先看日志，否则同样的问题会复现。'},
-      {t:'重启 Docker 服务',c:false,e:'Docker 服务正常的话重启没用。'},
-      {t:'换个镜像',c:false,e:'没定位问题前换镜像是盲目操作。'}
-    ]},
-    {q:'退出码 137，说明什么？',opts:[
-      {t:'容器因 OOM（内存溢出）被系统 kill',c:true,e:'正确！137 = 128 + 9(SIGKILL)，通常是内存超限。检查 docker run --memory 限制和宿主机内存，优化应用内存使用或增加限制。'},
-      {t:'应用正常退出',c:false,e:'正常退出是 0。'},
-      {t:'应用代码报错',c:false,e:'代码报错通常是 1。'},
-      {t:'Docker 服务挂了',c:false,e:'Docker 服务挂了容器不会有退出码。'}
-    ]},
-    {q:'容器日志显示 nohup: failed to run command，如何修复？',opts:[
-      {t:'检查 Dockerfile 的 CMD/ENTRYPOINT 命令路径和权限，确保可执行文件存在',c:true,e:'正确！常见原因：命令路径错误、文件没有执行权限、Windows 换行符导致脚本无法执行。用 docker run -it <镜像> sh 进入容器手动执行命令排查。'},
-      {t:'重新拉取镜像',c:false,e:'镜像本身没问题，是启动命令的问题。'},
-      {t:'增加容器内存',c:false,e:'这不是内存问题。'},
-      {t:'更换基础镜像',c:false,e:'先确认命令是否正确，不要急着换镜像。'}
-    ]}
-  ]},
-  {id:'k8s_crashloop',title:'K8s Pod CrashLoopBackOff',icon:'🟣',difficulty:'进阶',color:'#a78bfa',desc:'Kubernetes Pod 反复重启，状态 CrashLoopBackOff，如何定位根因？',steps:[
-    {q:'Pod 处于 CrashLoopBackOff，第一步执行什么？',opts:[
-      {t:'kubectl describe pod 看 Events 和 kubectl logs 看容器日志',c:true,e:'正确！kubectl describe pod <name> 看 Events（OOMKilled / Error / CrashLoopBackOff 原因），kubectl logs <name> --previous 看上一次崩溃的日志。'},
-      {t:'删除 Pod 让它重建',c:false,e:'删除前先看日志和事件，否则丢失排查现场。'},
-      {t:'重启 Node 节点',c:false,e:'节点重启影响大，先定位 Pod 问题。'},
-      {t:'升级 Kubernetes 版本',c:false,e:'版本升级不是应急手段。'}
-    ]},
-    {q:'describe 显示 Reason: OOMKilled，说明什么？',opts:[
-      {t:'容器内存使用超过 resources.limits.memory，被内核 kill',c:true,e:'正确！OOMKilled = 容器内存超限。检查应用是否有内存泄漏，适当调大 limits.memory，或优化代码。注意 limits 不能超过节点可分配内存。'},
-      {t:'CPU 不足',c:false,e:'CPU 不足是 CPUThrottling，不是 OOMKilled。'},
-      {t:'磁盘满了',c:false,e:'磁盘满是 ImagePullBackOff 或 Evicted。'},
-      {t:'网络不通',c:false,e:'网络问题不会导致 OOMKilled。'}
-    ]},
-    {q:'日志显示配置文件找不到，但 ConfigMap 已创建，可能原因？',opts:[
-      {t:'volumeMount 路径错误、ConfigMap name 不匹配、或 key 名不对',c:true,e:'正确！检查 deployment.yaml 中 volumes.configMap.name 是否和 ConfigMap 名一致，volumeMount.mountPath 是否正确，items.key 是否对应 ConfigMap 中的 key。'},
-      {t:'ConfigMap 太大',c:false,e:'ConfigMap 限制 1MB，但不会报找不到。'},
-      {t:'需要重启 kubelet',c:false,e:'kubelet 不需要重启，配置是实时挂载的。'},
-      {t:'命名空间不对',c:false,e:'命名空间不对会报 ConfigMap not found，需要确认。'}
-    ]},
-    {q:'liveness 探针失败导致反复重启，但应用实际正常，怎么处理？',opts:[
-      {t:'调整探针的 initialDelaySeconds / periodSeconds / failureThreshold，或检查探针端点是否正确',c:true,e:'正确！常见原因：应用启动慢但 initialDelaySeconds 太短、探针端点路径错误、探针超时时间太短。合理设置：initialDelaySeconds 略大于启动时间，failureThreshold >= 3。'},
-      {t:'删除 liveness 探针',c:false,e:'探针是健康检查保障，不应该删除，应该合理配置。'},
-      {t:'增加副本数',c:false,e:'副本数不影响单个 Pod 的探针检查。'},
-      {t:'换个节点调度',c:false,e:'节点不影响应用内部探针结果。'}
-    ]}
-  ]},
-  {id:'dns_fail',title:'DNS 解析失败',icon:'🟢',difficulty:'入门',color:'#4ade80',desc:'服务器无法解析域名，ping 域名失败但 ping IP 正常，如何排查？',steps:[
-    {q:'域名解析失败但 IP 能通，首先检查什么？',opts:[
-      {t:'/etc/resolv.conf 中的 DNS 服务器配置',c:true,e:'正确！cat /etc/resolv.conf 看 nameserver 是否正确。用 nslookup/dig 测试指定 DNS 服务器是否能解析。常见问题：DNS 服务器地址错了、DNS 服务挂了。'},
-      {t:'检查网络是否连通',c:false,e:'IP 能通说明网络正常，是 DNS 解析问题。'},
-      {t:'重启网卡',c:false,e:'网卡正常，重启不能解决 DNS 配置问题。'},
-      {t:'修改 hosts 文件',c:false,e:'改 hosts 是临时绕过，不是根本解决方案。'}
-    ]},
-    {q:'resolv.conf 配置正确但解析超时，可能原因？',opts:[
-      {t:'防火墙拦截了 DNS 53 端口（UDP/TCP），或 DNS 服务器本身故障',c:true,e:'正确！检查 iptables/安全组是否放行 53 端口 UDP。用 dig @8.8.8.8 测试公共 DNS，如果公共 DNS 能解析说明是配置的 DNS 服务器挂了。'},
-      {t:'域名过期了',c:false,e:'域名过期是返回 NXDOMAIN，不是超时。'},
-      {t:'服务器内存不足',c:false,e:'内存不足不影响 DNS 解析。'},
-      {t:'DNS 缓存满了',c:false,e:'缓存满不会导致超时。'}
-    ]},
-    {q:'部分域名能解析、部分不能，可能是？',opts:[
-      {t:'DNS 服务器转发/递归有问题，或域名 DNS 记录配置错误',c:true,e:'正确！用 dig +trace 跟踪完整解析链路，看是哪一级失败。可能是本地 DNS 转发器故障，或目标域名的 NS 记录/A 记录配置错误。'},
-      {t:'服务器中毒了',c:false,e:'不要无端猜测，先看解析链路。'},
-      {t:'浏览器缓存问题',c:false,e:'服务器端解析和浏览器无关。'},
-      {t:'需要重启服务器',c:false,e:'重启不能解决 DNS 记录或转发问题。'}
-    ]}
-  ]}
-];
-
-/* ===== Navigation ===== */
-var paneTitles = {monitor:'监控面板',console:'管理控制台',lexicon:'命令词典',lab:'模拟实战',tools:'运维工具箱',connect:'连接设置',logs:'运行日志'};
-function switchPane(name){
-  document.querySelectorAll('.nav-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.pane === name); });
-  document.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('active', p.id === 'pane-'+name); });
-  // Scroll active tab into view
-  var activeTab=document.querySelector('.nav-tab.active');
-  if(activeTab){ activeTab.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'}); }
-  if(name==='console') refreshConsole();
-  if(name==='lexicon'){ document.getElementById('lexSearch').focus(); renderLexicon(); }
-  if(name==='lab'){ renderLabList(); }
-  if(name==='tools'){ initTools(); }
-}
-document.querySelectorAll('.nav-tab').forEach(function(t){ t.addEventListener('click', function(){ switchPane(t.dataset.pane); }); });
-
-/* ===== Nav Scroll ===== */
-function scrollNav(dir){
-  var tabs=document.getElementById('navTabs');
-  var amount=tabs.clientWidth*0.6;
-  tabs.scrollBy({left:dir*amount,behavior:'smooth'});
-}
-function updateNavArrows(){
-  var tabs=document.getElementById('navTabs');
-  var left=document.getElementById('navArrowLeft');
-  var right=document.getElementById('navArrowRight');
-  var fadeL=document.getElementById('navFadeLeft');
-  var fadeR=document.getElementById('navFadeRight');
-  var canScroll=tabs.scrollWidth>tabs.clientWidth+2;
-  var atLeft=tabs.scrollLeft<=2;
-  var atRight=tabs.scrollLeft+tabs.clientWidth>=tabs.scrollWidth-2;
-  left.classList.toggle('show',canScroll&&!atLeft);
-  right.classList.toggle('show',canScroll&&!atRight);
-  fadeL.classList.toggle('show',canScroll&&!atLeft);
-  fadeR.classList.toggle('show',canScroll&&!atRight);
-}
-document.getElementById('navTabs').addEventListener('scroll',updateNavArrows);
-window.addEventListener('resize',updateNavArrows);
-setTimeout(updateNavArrows,200);
-
-/* ===== Mouse Follow ===== */
-document.addEventListener('pointermove', function(e){
-  document.documentElement.style.setProperty('--mx', (e.clientX/window.innerWidth*100)+'%');
-  document.documentElement.style.setProperty('--my', (e.clientY/window.innerHeight*100)+'%');
-});
+/* ===== Particles ===== */
+(function(){
+  var c=document.getElementById('particles'),ctx=c.getContext('2d'),particles=[];
+  function resize(){c.width=window.innerWidth;c.height=window.innerHeight}
+  resize();window.addEventListener('resize',resize);
+  for(var i=0;i<60;i++){particles.push({x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,r:Math.random()*1.5+0.5})}
+  function draw(){
+    ctx.clearRect(0,0,c.width,c.height);
+    for(var i=0;i<particles.length;i++){
+      var p=particles[i];p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(108,140,255,0.3)';ctx.fill();
+      for(var j=i+1;j<particles.length;j++){
+        var p2=particles[j],dx=p.x-p2.x,dy=p.y-p2.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.strokeStyle='rgba(108,140,255,'+(0.15*(1-d/120))+')';ctx.stroke()}
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
 
 /* ===== Splash ===== */
-var _splashHidden = false;
-function forceHideSplash(){
-  if(_splashHidden) return;
-  _splashHidden = true;
-  var s=document.getElementById('splash');
-  if(s){ s.classList.add('gone'); setTimeout(function(){ s.style.display='none'; },700); }
-  var a=document.getElementById('app');
-  if(a){ a.classList.add('ready'); }
+var _splashHidden=false;
+function forceHideSplash(){if(_splashHidden)return;_splashHidden=true;var s=document.getElementById('splash');if(s){s.classList.add('gone');setTimeout(function(){s.style.display='none'},700)}document.getElementById('app').classList.add('ready')}
+function hideSplash(){forceHideSplash()}
+setTimeout(hideSplash,1200);
+setTimeout(function(){if(!_splashHidden){var b=document.getElementById('splashSkip');if(b)b.style.display='block'}},5000);
+window.addEventListener('error',function(e){var el=document.getElementById('splashError');if(el&&!_splashHidden){el.style.display='block';el.textContent='加载异常: '+(e.message||'未知')+' ('+(e.filename||'').split('/').pop()+':'+(e.lineno||'?')+')';document.getElementById('splashSkip').style.display='block'}});
+
+/* ===== Number Animation ===== */
+function animateNumber(el,target,suffix){
+  suffix=suffix||'';var start=parseFloat(el.textContent)||0,dur=600,st=null;
+  function step(ts){if(!st)st=ts;var p=Math.min((ts-st)/dur,1),ease=1-Math.pow(1-p,3);el.textContent=(start+(target-start)*ease).toFixed(1)+suffix;if(p<1)requestAnimationFrame(step)}
+  requestAnimationFrame(step);
 }
-function hideSplash(){ forceHideSplash(); }
-setTimeout(hideSplash, 1100);
-// 兜底：5秒后如果还没隐藏，显示跳过按钮
-setTimeout(function(){
-  if(!_splashHidden){
-    var btn=document.getElementById('splashSkip');
-    if(btn) btn.style.display='block';
-  }
-}, 5000);
-// 全局错误捕获：显示在 splash 上，避免白屏卡死
-window.addEventListener('error', function(e){
-  var errEl=document.getElementById('splashError');
-  if(errEl && !_splashHidden){
-    errEl.style.display='block';
-    errEl.textContent = '加载异常: ' + (e.message || '未知错误') + ' (' + (e.filename||'').split('/').pop() + ':' + (e.lineno||'?') + ')';
-    var btn=document.getElementById('splashSkip');
-    if(btn) btn.style.display='block';
-  }
-});
+
+/* ===== Chart ===== */
+function drawChart(){
+  var c=document.getElementById('trendChart'),ctx=c.getContext('2d');
+  var dpr=window.devicePixelRatio||1;c.width=c.offsetWidth*dpr;c.height=200*dpr;ctx.scale(dpr,dpr);
+  var w=c.offsetWidth,h=200,pad=30;
+  ctx.clearRect(0,0,w,h);
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.lineWidth=1;
+  for(var i=0;i<=4;i++){var y=pad+(h-pad*2)*i/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(w-pad,y);ctx.stroke()}
+  // lines
+  var datasets=[{data:chartData.cpu,color:'#4ade80'},{data:chartData.mem,color:'#22d3ee'},{data:chartData.disk,color:'#fbbf24'}];
+  datasets.forEach(function(ds){
+    if(ds.data.length<2)return;
+    ctx.beginPath();ctx.strokeStyle=ds.color;ctx.lineWidth=2;ctx.shadowColor=ds.color;ctx.shadowBlur=8;
+    ds.data.forEach(function(v,i){var x=pad+(w-pad*2)*i/(chartData.max-1),y=h-pad-(h-pad*2)*v/100;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+    ctx.stroke();ctx.shadowBlur=0;
+    // fill
+    ctx.lineTo(pad+(w-pad*2)*(ds.data.length-1)/(chartData.max-1),h-pad);ctx.lineTo(pad,h-pad);ctx.closePath();
+    ctx.fillStyle=ds.color+'15';ctx.fill();
+  });
+}
+
+/* ===== Navigation ===== */
+function switchPane(name){
+  document.querySelectorAll('.nav-tab').forEach(function(t){t.classList.toggle('active',t.dataset.pane===name)});
+  document.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('active',p.id==='pane-'+name)});
+  if(name==='logs')refreshLogs();
+  if(name==='console')scrollConsoleBottom();
+}
+document.querySelectorAll('.nav-tab').forEach(function(t){t.addEventListener('click',function(){switchPane(t.dataset.pane)})});
 
 /* ===== Toast ===== */
-function toast(msg,type){
-  type=type||'info';
-  var t=document.createElement('div'); t.className='toast '+type; t.textContent=msg;
-  document.getElementById('toasts').appendChild(t);
-  setTimeout(function(){ t.style.animation='toastOut 0.3s forwards'; setTimeout(function(){ t.remove(); },300); },2500);
-}
+function toast(msg,type){type=type||'info';var t=document.createElement('div');t.className='toast';t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(function(){t.style.animation='toastOut 0.3s forwards';setTimeout(function(){t.remove()},300)},2500)}
 
-/* ===== Lexicon ===== */
-function renderCats(){
-  var c=document.getElementById('lexCats');
-  var all={all:{name:'全部',icon:'📋'}};
-  var cats=Object.assign({},all,COMMANDS);
-  c.innerHTML='';
-  Object.keys(cats).forEach(function(key){
-    var cat=cats[key];
-    var count=key==='all'?Object.values(COMMANDS).reduce(function(s,c){return s+c.list.length;},0):cat.list.length;
-    var btn=document.createElement('button');
-    btn.className='lex-cat'+(activeCat===key?' active':'');
-    btn.innerHTML='<span>'+cat.icon+'</span> '+cat.name+' <span class="count">'+count+'</span>';
-    btn.onclick=function(){ activeCat=key; renderCats(); renderLexicon(); };
-    c.appendChild(btn);
-  });
-}
-function renderLexicon(){
-  var grid=document.getElementById('lexGrid');
-  var q=document.getElementById('lexSearch').value.toLowerCase().trim();
-  var items=[];
-  Object.keys(COMMANDS).forEach(function(key){
-    if(activeCat!=='all'&&activeCat!==key) return;
-    COMMANDS[key].list.forEach(function(cmd){
-      if(favOnly&&favorites.indexOf(cmd.cmd)===-1) return;
-      if(q&&cmd.cmd.toLowerCase().indexOf(q)===-1&&cmd.desc.toLowerCase().indexOf(q)===-1&&cmd.syntax.toLowerCase().indexOf(q)===-1) return;
-      items.push(cmd);
-    });
-  });
-  if(items.length===0){ grid.innerHTML='<div class="lex-empty"><div class="icon">🔍</div><h3>没有找到匹配的命令</h3><p>试试其他关键词</p></div>'; return; }
-  grid.innerHTML='';
-  items.forEach(function(cmd,i){
-    var isFav=favorites.indexOf(cmd.cmd)!==-1;
-    var lc=cmd.level==='easy'?'level-easy':cmd.level==='mid'?'level-mid':'level-hard';
-    var lt=cmd.level==='easy'?'入门':cmd.level==='mid'?'进阶':'高级';
-    var card=document.createElement('div');
-    card.className='glass cmd-card'; card.style.animationDelay=(i*0.03)+'s';
-    card.innerHTML='<div class="cmd-head"><div class="cmd-name">'+cmd.cmd+'</div><button class="cmd-fav'+(isFav?' active':'')+'" onclick="toggleFav(\''+cmd.cmd.replace(/'/g,"\\'")+'\',this)">'+(isFav?'⭐':'☆')+'</button></div><div class="cmd-desc">'+cmd.desc+'</div><div class="cmd-syntax">'+cmd.syntax+'</div><div class="cmd-example"><strong>示例：</strong>'+cmd.example+'</div><div class="cmd-foot"><span class="cmd-level '+lc+'">'+lt+'</span><button class="cmd-copy" onclick="copyCmd(this,\''+cmd.cmd.replace(/'/g,"\\'")+'\')">📋 复制</button></div>';
-    grid.appendChild(card);
-  });
-}
-function toggleFav(cmd,btn){
-  var idx=favorites.indexOf(cmd);
-  if(idx===-1){ favorites.push(cmd); btn.classList.add('active'); btn.textContent='⭐'; toast('已收藏 '+cmd,'success'); }
-  else{ favorites.splice(idx,1); btn.classList.remove('active'); btn.textContent='☆'; toast('已取消收藏','info'); }
-  localStorage.setItem('shm_favs',JSON.stringify(favorites));
-  if(favOnly) renderLexicon();
-}
-function toggleFavFilter(){ favOnly=!favOnly; document.getElementById('favToggle').classList.toggle('active',favOnly); renderLexicon(); }
-function copyCmd(btn,cmd){
-  navigator.clipboard.writeText(cmd).then(function(){ btn.classList.add('copied'); btn.textContent='✓ 已复制'; setTimeout(function(){ btn.classList.remove('copied'); btn.textContent='📋 复制'; },1500); }).catch(function(){ toast('复制失败','error'); });
-}
-
-/* ===== Lab ===== */
-function renderLabList(){
-  updateLabStats();
-  var grid=document.getElementById('labGrid');
-  grid.innerHTML='';
-  SCENARIOS.forEach(function(s){
-    var done=labResults[s.id];
-    var dc=s.difficulty==='入门'?'level-easy':s.difficulty==='进阶'?'level-mid':'level-hard';
-    var card=document.createElement('div');
-    card.className='glass scenario-card';
-    card.innerHTML=(done?'<div class="scenario-done">✅</div>':'')+
-      '<div class="scenario-icon" style="background:'+s.color+'15;border-color:'+s.color+'30">'+s.icon+'</div>'+
-      '<h4>'+s.title+'</h4><p>'+s.desc+'</p>'+
-      '<div class="scenario-meta"><span class="cmd-level '+dc+'">'+s.difficulty+'</span><span class="scenario-steps">'+s.steps.length+' 道题</span>'+(done?'<span class="scenario-steps" style="color:var(--green)">得分 '+done.score+'%</span>':'')+'</div>';
-    card.onclick=function(){ startLab(s.id); };
-    grid.appendChild(card);
-  });
-}
-function updateLabStats(){
-  var done=Object.keys(labResults).length;
-  document.getElementById('labCompleted').textContent=done;
-  document.getElementById('labDoneCount').textContent=done;
-  document.getElementById('labDoneBar').style.width=(done/SCENARIOS.length*100)+'%';
-  if(done>0){
-    var avg=Math.round(Object.values(labResults).reduce(function(s,r){return s+r.score;},0)/done);
-    document.getElementById('labAvgScore').textContent=avg+'%';
-  }
-}
-function startLab(id){
-  currentLab=SCENARIOS.find(function(s){return s.id===id;});
-  currentStep=0; currentScore=0;
-  document.getElementById('labList').style.display='none';
-  document.getElementById('labQuiz').style.display='block';
-  renderLabStep();
-}
-function renderLabStep(){
-  var s=currentLab; var step=s.steps[currentStep];
-  var q=document.getElementById('labQuiz');
-  q.innerHTML='<div class="quiz-wrap">'+
-    '<div class="quiz-head"><button class="quiz-back" onclick="exitLab()">← 返回场景</button><div class="quiz-progress">第 '+(currentStep+1)+' / '+s.steps.length+' 题</div></div>'+
-    '<div class="quiz-bar"><div class="quiz-bar-fill" style="width:'+((currentStep)/s.steps.length*100)+'%"></div></div>'+
-    '<div class="glass quiz-card">'+
-      '<div class="quiz-scene">'+s.icon+' '+s.title+'</div>'+
-      '<div class="quiz-question">'+step.q+'</div>'+
-      '<div class="quiz-options" id="quizOpts">'+
-      step.opts.map(function(o,i){return '<div class="quiz-option" onclick="answerLab('+i+')"><span class="opt-letter">'+String.fromCharCode(65+i)+'</span><span>'+o.t+'</span></div>';}).join('')+
-      '</div>'+
-      '<div class="quiz-explain" id="quizExplain"></div>'+
-      '<div class="quiz-next" id="quizNext" style="display:none"><button class="btn btn-primary" onclick="nextLabStep()">'+(currentStep<s.steps.length-1?'下一题 →':'查看结果 🏆')+'</button></div>'+
-    '</div></div>';
-}
-function answerLab(idx){
-  var step=currentLab.steps[currentStep];
-  var opts=document.querySelectorAll('.quiz-option');
-  opts.forEach(function(o){ o.classList.add('disabled'); o.onclick=null; });
-  var chosen=step.opts[idx];
-  if(chosen.c){ currentScore++; opts[idx].classList.add('correct'); }
-  else{ opts[idx].classList.add('wrong'); step.opts.forEach(function(o,i){ if(o.c) opts[i].classList.add('correct'); }); }
-  var exp=document.getElementById('quizExplain');
-  exp.innerHTML='<strong>'+(chosen.c?'✅ 回答正确！':'❌ 回答错误')+'</strong><br>'+chosen.e;
-  exp.classList.add('show');
-  document.getElementById('quizNext').style.display='block';
-}
-function nextLabStep(){
-  if(currentStep<currentLab.steps.length-1){ currentStep++; renderLabStep(); }
-  else{ finishLab(); }
-}
-function finishLab(){
-  var pct=Math.round(currentScore/currentLab.steps.length*100);
-  labResults[currentLab.id]={score:pct,date:Date.now()};
-  localStorage.setItem('shm_lab_results',JSON.stringify(labResults));
-  var icon=pct>=80?'🏆':pct>=60?'👍':'💪';
-  var title=pct>=80?'优秀！运维达人':pct>=60?'不错，继续加油':'还需多练习';
-  var desc=pct>=80?'你对 '+currentLab.title+' 的排查流程掌握得很好，思路清晰，能准确选择每一步。':pct>=60?'基本思路正确，但有些步骤选择不够精准。回顾解析，理解为什么选这个。':'不要灰心！运维排查需要经验积累。仔细看每道题的解析，理解排查思路比记住答案更重要。';
-  var q=document.getElementById('labQuiz');
-  q.innerHTML='<div class="quiz-wrap"><div class="glass result-card">'+
-    '<div class="result-icon">'+icon+'</div>'+
-    '<div class="result-score" style="color:'+(pct>=80?'var(--green)':pct>=60?'var(--amber)':'var(--red)')+'">'+pct+'%</div>'+
-    '<div class="result-title">'+title+'</div>'+
-    '<div class="result-desc">'+desc+'<br><br>正确 '+currentScore+' / '+currentLab.steps.length+' 题</div>'+
-    '<div class="result-actions">'+
-      '<button class="btn btn-primary" onclick="startLab(\''+currentLab.id+'\')">🔄 再做一次</button>'+
-      '<button class="btn btn-ghost" onclick="exitLab()">📋 场景列表</button>'+
-    '</div></div></div>';
-  updateLabStats();
-}
-function exitLab(){
-  document.getElementById('labQuiz').style.display='none';
-  document.getElementById('labList').style.display='block';
-  renderLabList();
-}
-
-/* ===== Tools ===== */
-function initTools(){
-  document.getElementById('tsInput').value=Math.floor(Date.now()/1000);
-}
-function b64Encode(){ var v=document.getElementById('b64Input').value; document.getElementById('b64Output').textContent=v?btoa(unescape(encodeURIComponent(v))):'请输入内容'; }
-function b64Decode(){ try{ document.getElementById('b64Output').textContent=decodeURIComponent(escape(atob(document.getElementById('b64Input').value))); }catch(e){ document.getElementById('b64Output').textContent='解码失败：无效的 Base64'; } }
-function urlEncode(){ document.getElementById('urlOutput').textContent=encodeURIComponent(document.getElementById('urlInput').value); }
-function urlDecode(){ try{ document.getElementById('urlOutput').textContent=decodeURIComponent(document.getElementById('urlInput').value); }catch(e){ document.getElementById('urlOutput').textContent='解码失败'; } }
-function jsonFormat(){ try{ document.getElementById('jsonOutput').textContent=JSON.stringify(JSON.parse(document.getElementById('jsonInput').value),null,2); }catch(e){ document.getElementById('jsonOutput').textContent='JSON 格式错误：'+e.message; } }
-function jsonMinify(){ try{ document.getElementById('jsonOutput').textContent=JSON.stringify(JSON.parse(document.getElementById('jsonInput').value)); }catch(e){ document.getElementById('jsonOutput').textContent='JSON 格式错误：'+e.message; } }
-function tsToDate(){ var ts=parseInt(document.getElementById('tsInput').value); if(isNaN(ts)){ document.getElementById('tsOutput').textContent='请输入有效时间戳'; return; } var d=new Date(ts*1000); document.getElementById('tsOutput').textContent=d.toLocaleString('zh-CN')+'\nUTC: '+d.toUTCString(); }
-function dateToTs(){ var now=Math.floor(Date.now()/1000); document.getElementById('tsInput').value=now; document.getElementById('tsOutput').textContent='当前时间戳：'+now+'\n'+new Date().toLocaleString('zh-CN'); }
-function genPassword(){
-  var len=parseInt(document.getElementById('pwLen').value);
-  var chars='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-  var p=''; for(var i=0;i<len;i++) p+=chars[Math.floor(Math.random()*chars.length)];
-  document.getElementById('pwOutput').textContent=p;
-}
-async function calcHash(){
-  var text=document.getElementById('hashInput').value; var algo=document.getElementById('hashAlgo').value;
-  if(!text){ document.getElementById('hashOutput').textContent='请输入文本'; return; }
-  try{
-    var buf=await crypto.subtle.digest(algo,new TextEncoder().encode(text));
-    var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-    document.getElementById('hashOutput').textContent=algo+': '+hex;
-  }catch(e){ document.getElementById('hashOutput').textContent='计算失败：'+e.message; }
-}
-function convertBase(){
-  var n=parseInt(document.getElementById('decInput').value);
-  if(isNaN(n)){ document.getElementById('baseOutput').textContent='请输入有效数字'; return; }
-  document.getElementById('baseOutput').textContent='二进制: '+n.toString(2)+'\n八进制: '+n.toString(8)+'\n十进制: '+n+'\n十六进制: 0x'+n.toString(16).toUpperCase();
-}
-function testRegex(){
-  var p=document.getElementById('rePattern').value; var t=document.getElementById('reText').value;
-  if(!p){ document.getElementById('reOutput').textContent='请输入正则表达式'; return; }
-  try{
-    var re=new RegExp(p,'g'); var matches=t.match(re);
-    document.getElementById('reOutput').textContent=matches?('匹配到 '+matches.length+' 个:\n'+matches.join(', ')):'无匹配';
-  }catch(e){ document.getElementById('reOutput').textContent='正则错误：'+e.message; }
-}
-function copyOutput(id){
-  var text=document.getElementById(id).textContent;
-  navigator.clipboard.writeText(text).then(function(){ toast('已复制到剪贴板','success'); }).catch(function(){ toast('复制失败','error'); });
-}
-
-/* ===== Monitor iframe ===== */
-function openMonitor(){ document.getElementById('monitorWrap').classList.add('show'); var f=document.getElementById('monitorFrame'); if(!f.src||f.src.indexOf('about:')!==-1) f.src='/monitor'; }
-function closeMonitor(){ document.getElementById('monitorWrap').classList.remove('show'); }
+/* ===== API ===== */
+async function apiGet(url){try{var r=await fetch(url);return await r.json()}catch(e){return null}}
+async function apiPost(url,body){try{var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});return await r.json()}catch(e){return null}}
 
 /* ===== Connect ===== */
-function modeChanged(){
-  var m=document.getElementById('cfgMode').value;
-  document.getElementById('sshFields').style.display=m==='tunnel'?'block':'none';
-  document.getElementById('lblServer').textContent=m==='tunnel'?'服务器地址（SSH主机）':m==='proxy'?'网关地址':'服务器地址';
+async function loadConfig(){try{var c=await apiGet('/api/app/config');if(c){document.getElementById('cfgIP').value=c.server_ip||'';document.getElementById('cfgPort').value=c.server_port||8080;document.getElementById('cfgUser').value=c.auth_user||'';document.getElementById('cfgMode').value=c.mode||'direct'}}catch(e){}}
+async function saveConn(){var cfg={server_ip:document.getElementById('cfgIP').value,server_port:parseInt(document.getElementById('cfgPort').value)||8080,auth_user:document.getElementById('cfgUser').value,auth_pass:document.getElementById('cfgPass').value,mode:document.getElementById('cfgMode').value};await apiPost('/api/app/config',cfg);toast('配置已保存','success')}
+async function testConn(){await saveConn();var r=await apiPost('/api/app/test');if(r&&r.success){toast('连接成功: '+r.message,'success');setConnStatus('ok','连接正常')}else{toast('连接失败: '+(r&&r.message||'未知错误'),'error');setConnStatus('err','连接失败')}}
+async function connectServer(){await saveConn();var r=await apiPost('/api/app/connect');if(r&&r.success){connected=true;toast('已连接服务器','success');setConnStatus('ok','已连接');startPolling();addLog('info','已连接到服务器 '+document.getElementById('cfgIP').value)}else{toast('连接失败','error');setConnStatus('err','连接失败')}}
+function setConnStatus(s,text){var dot=document.getElementById('connDot'),txt=document.getElementById('connText');dot.className='status-dot '+s;txt.textContent=text;var csd=document.getElementById('csDot'),cst=document.getElementById('csText');csd.className='status-dot '+s;cst.textContent=text}
+
+/* ===== Polling ===== */
+function startPolling(){if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(pollData,3000);pollData()}
+function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null}}
+async function pollData(){
+  var d=await apiGet('/api/status');if(!d){setConnStatus('warn','数据获取失败');return}
+  if(!connected){connected=true;setConnStatus('ok','已连接')}
+  var m=d.metrics||{},s=d.server||{};
+  animateNumber(document.getElementById('cpuVal'),m.cpu&&m.cpu.percent||0,'%');
+  document.getElementById('cpuBar').style.width=(m.cpu&&m.cpu.percent||0)+'%';
+  document.getElementById('cpuSub').textContent=(s.cpu_count||0)+' 核心';
+  animateNumber(document.getElementById('memVal'),m.memory&&m.memory.percent||0,'%');
+  document.getElementById('memBar').style.width=(m.memory&&m.memory.percent||0)+'%';
+  document.getElementById('memSub').textContent=fmtBytes(m.memory&&m.memory.used||0)+' / '+fmtBytes(m.memory&&m.memory.total||0);
+  animateNumber(document.getElementById('diskVal'),m.disk&&m.disk.percent||0,'%');
+  document.getElementById('diskBar').style.width=(m.disk&&m.disk.percent||0)+'%';
+  document.getElementById('diskSub').textContent=fmtBytes(m.disk&&m.disk.used||0)+' / '+fmtBytes(m.disk&&m.disk.total||0);
+  animateNumber(document.getElementById('loadVal'),m.load&&m.load['1min']||0,'');
+  document.getElementById('loadBar').style.width=Math.min((m.load&&m.load['1min']||0)/(s.cpu_count||1)*100,100)+'%';
+  document.getElementById('loadSub').textContent=(m.load&&m.load['1min']||0).toFixed(2)+' / '+(m.load&&m.load['5min']||0).toFixed(2)+' / '+(m.load&&m.load['15min']||0).toFixed(2);
+  // network
+  var nets=d.net_interfaces||[];if(nets.length>0){var n=nets[0];document.getElementById('rxVal').textContent=fmtRate(n.rx_bytes||0);document.getElementById('txVal').textContent=fmtRate(n.tx_bytes||0)}
+  document.getElementById('tcpVal').textContent=(d.tcp&&d.tcp.established||0)+'';
+  document.getElementById('uptimeVal').textContent=fmtUptime(s.uptime||0);
+  // info
+  document.getElementById('infoHost').textContent=s.hostname||'--';
+  document.getElementById('infoOS').textContent=s.os||'--';
+  document.getElementById('infoKernel').textContent=s.kernel||'--';
+  document.getElementById('infoArch').textContent=s.arch||'--';
+  document.getElementById('infoCores').textContent=s.cpu_count||'--';
+  document.getElementById('infoFD').textContent=(m.fd_used||0)+' / '+(m.fd_max||0);
+  // chart
+  chartData.cpu.push(m.cpu&&m.cpu.percent||0);chartData.mem.push(m.memory&&m.memory.percent||0);chartData.disk.push(m.disk&&m.disk.percent||0);
+  if(chartData.cpu.length>chartData.max){chartData.cpu.shift();chartData.mem.shift();chartData.disk.shift()}
+  drawChart();
+  // processes
+  renderProcs(d.top_processes||[]);
+  // alerts
+  if(d.alerts&&d.alerts.length>0)renderAlerts(d.alerts);
 }
-function fillConfig(cfg){
-  document.getElementById('cfgMode').value=cfg.mode||'tunnel';
-  document.getElementById('cfgIp').value=cfg.server_ip||'';
-  document.getElementById('cfgPort').value=cfg.server_port||8080;
-  document.getElementById('cfgSshUser').value=cfg.ssh_user||'root';
-  document.getElementById('cfgSshPort').value=cfg.ssh_port||22;
-  document.getElementById('cfgSshKey').value=cfg.ssh_key||'';
-  document.getElementById('cfgAuthUser').value=cfg.auth_user||'';
-  document.getElementById('cfgAuthPass').value='';
-  modeChanged();
+
+function renderProcs(procs){
+  var tb=document.querySelector('#procTable tbody');if(!procs.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">暂无进程数据</td></tr>';return}
+  tb.innerHTML=procs.map(function(p){return '<tr><td style="font-family:var(--mono)">'+p.pid+'</td><td>'+p.name+'</td><td>'+(p.user||'--')+'</td><td class="proc-cpu">'+(p.cpu_percent||0).toFixed(1)+'%</td><td class="proc-mem">'+(p.memory_kb||0).toLocaleString()+'</td></tr>'}).join('');
 }
-function readConfig(){
-  return {mode:document.getElementById('cfgMode').value,server_ip:document.getElementById('cfgIp').value.trim(),server_port:parseInt(document.getElementById('cfgPort').value)||8080,ssh_user:document.getElementById('cfgSshUser').value.trim()||'root',ssh_port:parseInt(document.getElementById('cfgSshPort').value)||22,ssh_key:document.getElementById('cfgSshKey').value.trim(),auth_user:document.getElementById('cfgAuthUser').value.trim(),auth_pass:document.getElementById('cfgAuthPass').value,auto_connect:true};
+
+function renderAlerts(alerts){
+  var list=document.getElementById('alertList');
+  list.innerHTML=alerts.slice(0,5).map(function(a){var lv=a.type&&a.type.toLowerCase();var icon=lv==='critical'?'🔴':lv==='warning'?'🟡':'ℹ️';return '<div class="alert-item"><div class="alert-icon '+(lv||'info')+'">'+icon+'</div><div class="alert-content"><div class="alert-title">'+(a.title||'告警')+'</div><div class="alert-desc">'+(a.message||'')+'</div></div><div class="alert-time">'+(a.time||'')+'</div></div>'}).join('');
 }
-function setResult(id,ok,msg){ var el=document.getElementById(id); el.textContent=msg||''; el.className='hint'+(ok===true?' ok':ok===false?' err':''); }
-async function post(url,body){ var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}); return await r.json(); }
-async function saveConfig(){ var r=await post('/api/app/config',readConfig()); setResult('connResult',r.success!==false,r.success!==false?'配置已保存':(r.message||'保存失败')); refreshState(); }
-async function testConn(){ await post('/api/app/config',readConfig()); setResult('connResult',null,'正在测试…'); var r=await post('/api/app/test'); setResult('connResult',r.success,r.success?('连接正常 · 延迟 '+(r.latency_ms||0)+' ms'):('测试失败：'+(r.message||''))); refreshState(); }
-async function connect(){ await post('/api/app/config',readConfig()); setResult('connResult',null,'正在连接…'); var r=await post('/api/app/connect'); setResult('connResult',r.success,r.success?'已连接':('连接失败：'+(r.message||''))); refreshState(); }
-async function disconnect(){ var r=await post('/api/app/disconnect'); setResult('connResult',r.success,r.message); refreshState(); }
 
 /* ===== Console ===== */
-async function startConsole(){
-  if(STATE&&!STATE.console_admin_exists){ showAdminSetup(); return; }
-  setResult('consoleResult',null,'正在启动…');
-  var r=await post('/api/app/console/start',{});
-  setResult('consoleResult',r.success,r.message||'');
-  refreshConsole(); refreshState();
+function sendConsole(){
+  var input=document.getElementById('consoleInput'),cmd=input.value.trim();if(!cmd)return;
+  appendConsole('> '+cmd,'var(--text)');input.value='';
+  var cmds={'help':'可用命令: status, top, df, free, ss, journal, services, clear','status':'显示服务器状态','clear':'清空控制台'};
+  if(cmd==='clear'){document.getElementById('consoleOutput').innerHTML='';return}
+  if(cmd==='help'){appendConsole(cmds.help,'var(--text-3)');return}
+  appendConsole('执行: '+cmd+' ...','var(--text-3)');
+  setTimeout(function(){appendConsole('命令已发送到服务器（需 Agent 支持远程执行）','var(--amber)')},500);
+  scrollConsoleBottom();
 }
-async function stopConsole(){ await post('/api/app/console/stop'); refreshConsole(); refreshState(); }
-function showAdminSetup(){
-  document.getElementById('consoleSetup').innerHTML='<div class="pane-inner" style="max-width:480px"><div class="glass" style="padding:30px"><div style="font-size:36px;margin-bottom:12px">🔒</div><h3 style="font-size:16px;font-weight:700;margin-bottom:8px">创建管理员账户</h3><p style="font-size:12px;color:var(--text-2);margin-bottom:16px">密码至少 12 位，含大写、小写、数字和特殊字符。</p><div class="field"><label>用户名</label><input type="text" id="admUser" placeholder="admin"></div><div class="field"><label>密码</label><input type="password" id="admPass" placeholder="强密码"></div><div class="btn-row"><button class="btn btn-primary" onclick="createAdmin()">创建并启动</button></div><div class="hint" id="admResult" style="margin-top:10px"></div></div></div>';
-}
-async function createAdmin(){
-  var u=document.getElementById('admUser').value.trim(); var p=document.getElementById('admPass').value;
-  if(!u||!p){ setResult('admResult',false,'请填写用户名和密码'); return; }
-  if(p.length<12||!/[A-Z]/.test(p)||!/[a-z]/.test(p)||!/[0-9]/.test(p)||!/[!@#$%^&*._\-~]/.test(p)){ setResult('admResult',false,'密码不满足要求'); return; }
-  setResult('admResult',null,'正在创建…');
-  var r=await post('/api/app/console/start',{admin_user:u,admin_pass:p});
-  if(r.success){
-    if(r.api_key){
-      document.getElementById('consoleSetup').innerHTML='<div class="pane-inner" style="max-width:480px"><div class="glass" style="padding:30px;text-align:center"><div style="font-size:36px;margin-bottom:12px">✅</div><h3 style="font-size:16px;margin-bottom:8px">管理员已创建</h3><div class="hint err" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);padding:10px;border-radius:8px;margin-bottom:12px">API 密钥只显示一次，请立即复制！</div><div style="font-family:var(--mono);font-size:12px;color:var(--accent-2);background:var(--bg-0);padding:12px;border-radius:8px;border:1px solid var(--border);word-break:break-all;margin-bottom:14px">'+r.api_key+'</div><button class="btn btn-primary" onclick="refreshConsole()">进入控制台</button></div></div>';
-    }else{ setResult('admResult',true,'管理员已创建'); }
-  }else{ setResult('admResult',false,r.message||'创建失败'); }
-  refreshState();
-}
-function refreshConsole(){
-  if(!STATE) return;
-  var host=document.getElementById('consoleHost'); var setup=document.getElementById('consoleSetup');
-  if(STATE.console_running){
-    host.style.display='block'; setup.style.display='none';
-    var frame=document.getElementById('consoleFrame'); var src='http://127.0.0.1:'+STATE.console_port+'/console/';
-    if(frame.getAttribute('src')!==src) frame.setAttribute('src',src);
-  }else{
-    host.style.display='none'; setup.style.display='flex';
-    if(!STATE.console_admin_exists){
-      setup.innerHTML='<div class="pane-inner" style="max-width:480px"><div class="glass" style="padding:36px;text-align:center"><div style="font-size:48px;margin-bottom:16px">🧩</div><h3 style="font-size:18px;font-weight:700;margin-bottom:10px">管理控制台未启动</h3><p style="font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:22px">尚未创建管理员。启动后可管理多台服务器、权限、部署与工单。</p><button class="btn btn-primary" onclick="showAdminSetup()">创建管理员并启动</button></div></div>';
-    }else{
-      setup.innerHTML='<div class="pane-inner" style="max-width:480px"><div class="glass" style="padding:36px;text-align:center"><div style="font-size:48px;margin-bottom:16px">🧩</div><h3 style="font-size:18px;font-weight:700;margin-bottom:10px">管理控制台未启动</h3><p style="font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:22px">点击下方按钮启动，随后在此窗口内登录管理。</p><button class="btn btn-primary" onclick="startConsole()">启动管理控制台</button></div></div>';
-    }
-  }
-}
+function appendConsole(text,color){var out=document.getElementById('consoleOutput');var d=document.createElement('div');d.className='console-line';d.style.color=color||'var(--green)';d.textContent=text;out.appendChild(d);scrollConsoleBottom()}
+function scrollConsoleBottom(){var out=document.getElementById('consoleOutput');if(out)out.scrollTop=out.scrollHeight}
+function runQuick(cmd){switchPane('console');sendConsole();document.getElementById('consoleInput').value=cmd;sendConsole()}
 
-/* ===== State & Logs ===== */
-async function refreshState(){
-  try{
-    var r=await fetch('/api/app/state'); STATE=await r.json();
-    var map={connected:['ok','已连接'],connecting:['warn','连接中'],error:['err','连接失败'],disconnected:['','未连接']};
-    var c=map[STATE.conn_status]||['','—'];
-    document.getElementById('connDot').className='status-dot '+c[0];
-    document.getElementById('connText').textContent=c[1];
-    document.getElementById('consoleDot').className='status-dot '+(STATE.console_running?'ok':'');
-  }catch(e){}
-}
-var lastLogLen=0;
-async function refreshLogs(){
-  try{
-    var r=await fetch('/api/app/logs'); var data=await r.json(); var logs=data.logs||[];
-    var list=document.getElementById('logList');
-    for(var i=lastLogLen;i<logs.length;i++){
-      var l=logs[i]; var div=document.createElement('div');
-      div.className='log-line '+(l.level||'info');
-      div.innerHTML='<span class="log-time">'+l.t+'</span><span class="log-msg"></span>';
-      div.querySelector('.log-msg').textContent=l.msg; list.appendChild(div);
-    }
-    if(lastLogLen!==logs.length){ lastLogLen=logs.length; list.scrollTop=list.scrollHeight; }
-  }catch(e){}
-}
-async function clearLogs(){ await post('/api/app/logs/clear'); document.getElementById('logList').innerHTML=''; lastLogLen=0; refreshLogs(); }
+/* ===== Logs ===== */
+async function refreshLogs(){try{var d=await apiGet('/api/app/logs');var logs=(d&&d.logs)||[];var c=document.getElementById('logContainer');c.innerHTML=logs.map(function(l){return '<div class="log-line"><span class="log-time">'+l.t+'</span><span class="log-level '+(l.level||'info')+'">'+(l.level||'info').toUpperCase()+'</span>'+l.msg+'</div>'}).join('')||'<div class="log-line"><span class="log-time">--:--:--</span><span class="log-level info">INFO</span>暂无日志</div>'}catch(e){}}
+function clearLogs(){apiPost('/api/app/logs/clear');document.getElementById('logContainer').innerHTML='<div class="log-line"><span class="log-time">--:--:--</span><span class="log-level info">INFO</span>日志已清空</div>';toast('日志已清空')}
+function addLog(level,msg){var c=document.getElementById('logContainer');var d=document.createElement('div');d.className='log-line';d.innerHTML='<span class="log-time">'+new Date().toLocaleTimeString()+'</span><span class="log-level '+level+'">'+level.toUpperCase()+'</span>'+msg;c.appendChild(d);c.scrollTop=c.scrollHeight}
+
+/* ===== Utils ===== */
+function fmtBytes(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(1)+' GB'}
+function fmtRate(bps){if(bps<1024)return bps+' B/s';if(bps<1048576)return(bps/1024).toFixed(1)+' KB/s';return(bps/1048576).toFixed(1)+' MB/s'}
+function fmtUptime(s){var d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);if(d>0)return d+'d '+h+'h';if(h>0)return h+'h '+m+'m';return m+'m'}
 
 /* ===== Init ===== */
-(async function init(){
-  renderCats(); renderLexicon(); updateLabStats();
-  try{ var c=await (await fetch('/api/app/config')).json(); fillConfig(c); }catch(e){}
-  await refreshState(); refreshConsole();
-  setInterval(refreshState,2000); setInterval(refreshLogs,1500);
-})();
+loadConfig();
+setTimeout(function(){drawChart();refreshLogs()},1500);
 </script>
 </body>
 </html>
-'''
+"""

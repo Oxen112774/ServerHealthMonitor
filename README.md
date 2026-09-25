@@ -1,17 +1,19 @@
-# Server Health Monitor v4.0
+# Server Health Monitor v5.0
 
-> 面向生产环境的**通用服务器健康监控与自动修复平台**。Go 高性能 Agent + Windows 桌面客户端 + Web 管理控制台，三位一体覆盖监控、告警、自愈、运维学习全流程。
+> 面向生产环境的**服务器运维一体智能插件**。Go 高性能 Agent + Windows 桌面客户端 + Web 管理控制台，三位一体覆盖监控、告警、自愈、远程运维全流程。
 
-[![Gitee](https://img.shields.io/badge/Gitee-主仓库-red?logo=gitee)](https://gitee.com/hanbeimuren/ServerHealthMonitor)
+[![Gitee](https://img.shields.io/badge/Gitee-主仓库-red?logo=gitee)](https://gitee.com/hanbeimuren/server-health-monitor-v2)
+[![GitHub](https://img.shields.io/badge/GitHub-镜像-181717?logo=github)](https://github.com/Oxen112774/ServerHealthMonitor)
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](#)
 
-## ⚠️ 仓库迁移声明
+## ⚠️ 仓库说明
 
-本项目原存放于 GitHub，因上传限制现已完整迁移至 **Gitee 作为主仓库**。旧 GitHub 仓库仅做历史备份，不再接收新功能与修复。
+本项目同时托管于 **Gitee（主仓库）** 和 **GitHub（镜像）**，双仓库同步更新。
 
-🔗 **主仓库：https://gitee.com/hanbeimuren/ServerHealthMonitor**
+🔗 **Gitee 主仓库：https://gitee.com/hanbeimuren/server-health-monitor-v2**
+🔗 **GitHub 镜像：https://github.com/Oxen112774/ServerHealthMonitor**
 
 > SCP:SL 服务端适配仅为内置示例模块；本项目是通用服务器健康监控与自动修复平台，并非 SCP:SL 专用工具。
 
@@ -20,18 +22,20 @@
 ### 🎯 监控即插即用
 - **零依赖单二进制**：Go 编译的 Agent 拷贝到服务器直接运行，无需安装运行时
 - **自动发现服务**：systemd 服务自动识别，支持自定义服务名和端口
-- **全维度指标**：CPU / 内存 / Swap / 磁盘 / 负载 / 网络速率 / TCP连接 / 文件描述符 / Top进程
+- **全维度指标**：CPU / 内存 / Swap / 磁盘 / 负载 / 网络速率 / TCP连接 / 文件描述符 / Top进程 / 系统信息
 
 ### 🛡️ 自动修复闭环
 - 故障检测 → 自动重启 → 冷却验证 → 熔断保护，完整自愈链路
 - 自适应异常检测（滑动窗口 Z-score + EWMA），捕捉慢泄漏和突发尖峰
 - 告警分组 / 抑制 / 升级 / 静默，减少 60%+ 重复告警
 
-### 🖥️ 桌面端不止于监控
-- **液态玻璃 UI**：毛玻璃卡片 + 鼠标跟随光晕 + 流畅过渡动画
-- **命令词典**：120+ 命令，覆盖 Linux / PowerShell / CMD / 网络 / 安全 / Docker / Git / 数据库，搜索即查
-- **模拟实战实验室**：12 个交互式故障排查场景，43 道题带解析和评分，新手也能练运维
-- **运维工具箱**：Base64 / URL / JSON / 时间戳 / 密码生成 / 哈希 / 进制 / 正则，8 个常用工具本地运行
+### 🖥️ 桌面端 v5.0 全新改版
+- **粒子背景动画**：Canvas 粒子网络 + 连线，科技感拉满
+- **数字滚动动画**：指标变化时平滑过渡，实时趋势图带发光效果
+- **液态玻璃 UI**：毛玻璃卡片 + 3D 悬浮 + 渐变光效
+- **4 核心页签**：监控面板 / 远程控制台 / 连接设置 / 运行日志，聚焦运维
+- **快捷运维**：一键查看进程、磁盘、内存、网络、日志、服务状态
+- **实时图表**：CPU/内存/磁盘 60 秒趋势图，带渐变填充和发光线条
 
 ### 🔌 开放集成
 - Prometheus `/metrics` 端点 + Grafana 仪表盘开箱即用
@@ -43,9 +47,9 @@
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Windows 桌面客户端                    │
-│  监控面板 │ 控制台 │ 命令词典 │ 模拟实战 │ 工具箱    │
-│  (Python + PyWebView, 液态玻璃UI)                 │
+│              Windows 桌面客户端 v5.0              │
+│   监控面板 │ 远程控制台 │ 连接设置 │ 运行日志      │
+│  (Python + PyWebView, 粒子动画+液态玻璃UI)        │
 └────────────────────┬────────────────────────────┘
                      │ HTTP/HTTPS (Basic Auth)
 ┌────────────────────▼────────────────────────────┐
