@@ -973,7 +973,7 @@ var SCENARIOS = [
       {t:'正常现象，不用管',c:false,e:'全表扫描会随数据增长越来越慢，必须优化。'}
     ]},
     {q:'加了索引还是慢，EXPLAIN 显示索引没生效，可能原因？',opts:[
-      {t:'索引列上用了函数/运算、隐式类型转换、或 LIKE 前导通配符',c:true,e:'正确！常见索引失效：WHERE DATE(create_time)=...、WHERE id='1'（字符串转数字）、LIKE '%abc'。改写 SQL 避免这些模式。'},
+      {t:'索引列上用了函数/运算、隐式类型转换、或 LIKE 前导通配符',c:true,e:'正确！常见索引失效：WHERE DATE(create_time)=...、WHERE id="1"（字符串转数字）、LIKE "%abc"。改写 SQL 避免这些模式。'},
       {t:'索引建错了表',c:false,e:'索引不会建错表，检查是否在正确的列上。'},
       {t:'MySQL 不支持该索引类型',c:false,e:'普通 B-tree 索引都支持，除非是特殊类型。'},
       {t:'需要重启 MySQL 生效',c:false,e:'索引创建后立即生效，不需要重启。'}
@@ -987,7 +987,7 @@ var SCENARIOS = [
   ]},
   {id:'docker_exit',title:'Docker 容器异常退出',icon:'🔵',difficulty:'入门',color:'#38bdf8',desc:'Docker 容器启动后立即退出，服务不可用，如何排查？',steps:[
     {q:'容器启动后立即退出，第一步看什么？',opts:[
-      {t:'docker logs 查看容器日志，docker inspect 看退出码',c:true,e:'正确！docker logs <容器名> 看应用报错，docker inspect -f '{{.State.ExitCode}}' 看退出码（0=正常退出，1=应用错误，137=OOM被kill，143=收到SIGTERM）。'},
+      {t:'docker logs 查看容器日志，docker inspect 看退出码',c:true,e:'正确！docker logs <容器名> 看应用报错，docker inspect -f "{{.State.ExitCode}}" 看退出码（0=正常退出，1=应用错误，137=OOM被kill，143=收到SIGTERM）。'},
       {t:'删除容器重建',c:false,e:'重建前先看日志，否则同样的问题会复现。'},
       {t:'重启 Docker 服务',c:false,e:'Docker 服务正常的话重启没用。'},
       {t:'换个镜像',c:false,e:'没定位问题前换镜像是盲目操作。'}
