@@ -324,6 +324,8 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;back
   <div class="splash-logo">S</div>
   <div class="splash-bar"></div>
   <div class="splash-text">Loading Server Health Monitor</div>
+  <div class="splash-error" id="splashError" style="display:none;margin-top:8px;font-size:11px;color:#f87171;max-width:360px;text-align:center;line-height:1.6"></div>
+  <button class="splash-skip" id="splashSkip" style="display:none;margin-top:12px;padding:6px 16px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:11px;cursor:pointer" onclick="forceHideSplash()">跳过加载</button>
 </div>
 
 <div id="app">
@@ -580,8 +582,10 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;back
 var STATE = null;
 var activeCat = 'all';
 var favOnly = false;
-var favorites = JSON.parse(localStorage.getItem('shm_favs') || '[]');
-var labResults = JSON.parse(localStorage.getItem('shm_lab_results') || '{}');
+var favorites = [];
+var labResults = {};
+try { favorites = JSON.parse(localStorage.getItem('shm_favs') || '[]'); } catch(e) { favorites = []; }
+try { labResults = JSON.parse(localStorage.getItem('shm_lab_results') || '{}'); } catch(e) { labResults = {}; }
 var currentLab = null;
 var currentStep = 0;
 var currentScore = 0;
@@ -607,6 +611,13 @@ var COMMANDS = {
     {cmd:'sed',desc:'流编辑器，文本替换/删除。',syntax:'sed [选项] 命令 文件',example:"sed -i 's/old/new/g' f.txt",level:'hard'},
     {cmd:'crontab -e',desc:'编辑定时任务。',syntax:'crontab [-e|-l|-r]',example:'分 时 日 月 周 命令',level:'mid'},
     {cmd:'uptime',desc:'查看运行时间和负载。',syntax:'uptime',example:'显示 1/5/15 分钟负载',level:'easy'},
+    {cmd:'dmesg',desc:'查看内核环形缓冲区日志。',syntax:'dmesg [-T] [-H]',example:'dmesg -T | tail -20',level:'mid'},
+    {cmd:'lscpu',desc:'查看 CPU 架构信息。',syntax:'lscpu',example:'查看核心数/线程/缓存',level:'easy'},
+    {cmd:'watch',desc:'周期性执行命令并高亮变化。',syntax:'watch [-n 秒] 命令',example:'watch -n 1 df -h',level:'mid'},
+    {cmd:'nohup',desc:'后台运行不受终端关闭影响。',syntax:'nohup 命令 &',example:'nohup ./app & > app.log',level:'mid'},
+    {cmd:'pstree',desc:'进程树状显示。',syntax:'pstree [-p] [-u]',example:'pstree -p | grep nginx',level:'easy'},
+    {cmd:'env',desc:'查看环境变量。',syntax:'env | grep 关键词',example:'env | grep PATH',level:'easy'},
+    {cmd:'history',desc:'查看命令历史。',syntax:'history [N]',example:'history | grep git',level:'easy'},
   ]},
   powershell:{name:'PowerShell',icon:'🔷',color:'#38d9f5',list:[
     {cmd:'Get-Process',desc:'获取进程列表。',syntax:'Get-Process [-Name 名称]',example:'Get-Process node',level:'easy'},
@@ -620,6 +631,11 @@ var COMMANDS = {
     {cmd:'Get-NetTCPConnection',desc:'查看 TCP 连接。',syntax:'Get-NetTCPConnection [-State s]',example:'Get-NetTCPConnection -State Listen',level:'mid'},
     {cmd:'Set-ExecutionPolicy',desc:'修改脚本执行策略。',syntax:'Set-ExecutionPolicy 策略',example:'Set-ExecutionPolicy RemoteSigned',level:'mid'},
     {cmd:'Compress-Archive',desc:'压缩为 ZIP。',syntax:'Compress-Archive -Path s -Dest d.zip',example:'Compress-Archive ./src backup.zip',level:'easy'},
+    {cmd:'Restart-Computer',desc:'重启/关闭计算机。',syntax:'Restart-Computer [-Force]',example:'Restart-Computer -Force',level:'easy'},
+    {cmd:'Get-CimInstance',desc:'WMI/CIM 系统信息。',syntax:'Get-CimInstance 类名',example:'Get-CimInstance Win32_Processor',level:'mid'},
+    {cmd:'Where-Object',desc:'过滤管道对象（? 别名）。',syntax:'... | Where-Object {条件}',example:'Get-Service | ? {$_.Status -eq "Stopped"}',level:'mid'},
+    {cmd:'ForEach-Object',desc:'遍历管道对象（% 别名）。',syntax:'... | ForEach-Object {动作}',example:'Get-Process | % {$_.Name}',level:'mid'},
+    {cmd:'Export-Csv',desc:'导出为 CSV 文件。',syntax:'... | Export-Csv 路径 -NoTypeInformation',example:'Get-Process | Export-Csv procs.csv',level:'easy'},
   ]},
   cmd:{name:'CMD',icon:'⬛',color:'#fbbf24',list:[
     {cmd:'ipconfig',desc:'查看网络配置。',syntax:'ipconfig [/all] [/flushdns]',example:'ipconfig /all',level:'easy'},
@@ -634,6 +650,10 @@ var COMMANDS = {
     {cmd:'findstr',desc:'搜索文本。',syntax:'findstr [/i] [/s] 词 文件',example:'dir /s | findstr /i ".log"',level:'easy'},
     {cmd:'systeminfo',desc:'显示系统信息。',syntax:'systeminfo',example:'systeminfo | findstr /i "os name"',level:'easy'},
     {cmd:'shutdown',desc:'关机/重启。',syntax:'shutdown [/s|/r|/a] [/t 秒]',example:'shutdown /r /t 0; /a 取消',level:'easy'},
+    {cmd:'net user',desc:'管理用户账户。',syntax:'net user [用户名] [密码] [/add|/delete]',example:'net user admin P@ss /add',level:'mid'},
+    {cmd:'netstat -ano',desc:'查看端口占用和PID。',syntax:'netstat -ano | findstr 端口',example:'netstat -ano | findstr :8080',level:'mid'},
+    {cmd:'wmic',desc:'WMI 命令行管理。',syntax:'wmic 类别 get 属性',example:'wmic process get name,processid',level:'mid'},
+    {cmd:'powercfg',desc:'电源配置管理。',syntax:'powercfg /选项',example:'powercfg /energy 生成能效报告',level:'mid'},
   ]},
   network:{name:'网络诊断',icon:'🌐',color:'#a78bfa',list:[
     {cmd:'curl',desc:'发送 HTTP 请求。',syntax:'curl [选项] URL',example:'curl -I https://example.com',level:'mid'},
@@ -645,6 +665,10 @@ var COMMANDS = {
     {cmd:'tcpdump',desc:'抓包分析。',syntax:'tcpdump [选项] [表达式]',example:'tcpdump -i any port 80 -c 100',level:'hard'},
     {cmd:'iptables',desc:'Linux 防火墙。',syntax:'iptables [-t 表] [-A] 链 规则',example:'iptables -A INPUT -p tcp --dport 8080 -j DROP',level:'hard'},
     {cmd:'nmap',desc:'端口扫描。',syntax:'nmap [选项] 目标',example:'nmap -sV -p 1-1000 1.2.3.4',level:'hard'},
+    {cmd:'ip addr',desc:'查看网络接口和IP。',syntax:'ip addr [show 接口]',example:'ip addr show eth0',level:'easy'},
+    {cmd:'traceroute',desc:'追踪路由路径（Linux版）。',syntax:'traceroute 主机',example:'traceroute 8.8.8.8',level:'mid'},
+    {cmd:'whois',desc:'查询域名注册信息。',syntax:'whois 域名',example:'whois example.com',level:'easy'},
+    {cmd:'route',desc:'查看/修改路由表。',syntax:'route [-n] [-A inet6]',example:'route -n',level:'mid'},
   ]},
   security:{name:'安全权限',icon:'🔒',color:'#f87171',list:[
     {cmd:'sudo',desc:'管理员权限执行。',syntax:'sudo 命令',example:'sudo systemctl restart nginx',level:'easy'},
@@ -654,6 +678,10 @@ var COMMANDS = {
     {cmd:'who / w',desc:'当前登录用户。',syntax:'who; w',example:'w 显示用户在做什么',level:'easy'},
     {cmd:'openssl',desc:'加密工具集。',syntax:'openssl 子命令 [选项]',example:'openssl req -x509 -newkey rsa:2048 ...',level:'hard'},
     {cmd:'fail2ban-client',desc:'防暴力破解。',syntax:'fail2ban-client status [监狱]',example:'fail2ban-client status sshd',level:'mid'},
+    {cmd:'chattr',desc:'修改文件隐藏属性。',syntax:'chattr [+|-]属性 文件',example:'chattr +i file 设为不可变',level:'hard'},
+    {cmd:'getfacl/setfacl',desc:'访问控制列表管理。',syntax:'getfacl 文件; setfacl -m u:用户:权限 文件',example:'setfacl -m u:www:r-x /var/www',level:'hard'},
+    {cmd:'usermod',desc:'修改用户属性。',syntax:'usermod [选项] 用户名',example:'usermod -aG docker username 加组',level:'mid'},
+    {cmd:'passwd',desc:'修改用户密码。',syntax:'passwd [用户名]',example:'passwd root',level:'easy'},
   ]},
   docker:{name:'Docker',icon:'🐳',color:'#22d3ee',list:[
     {cmd:'docker ps',desc:'查看运行中容器。',syntax:'docker ps [-a] [-q]',example:'docker ps -a',level:'easy'},
@@ -666,6 +694,11 @@ var COMMANDS = {
     {cmd:'docker stop/rm',desc:'停止/删除容器。',syntax:'docker stop 容器; docker rm 容器',example:'docker stop myapp && docker rm myapp',level:'easy'},
     {cmd:'docker system prune',desc:'清理未使用资源。',syntax:'docker system prune [-a] [--volumes]',example:'docker system prune -a --volumes',level:'mid'},
     {cmd:'docker stats',desc:'实时资源监控。',syntax:'docker stats [容器]',example:'docker stats',level:'easy'},
+    {cmd:'docker inspect',desc:'查看容器/镜像详细信息。',syntax:'docker inspect 对象',example:'docker inspect myapp | grep IPAddress',level:'mid'},
+    {cmd:'docker cp',desc:'容器与主机间复制文件。',syntax:'docker cp 源 目标',example:'docker cp myapp:/etc/nginx.conf ./',level:'easy'},
+    {cmd:'docker images',desc:'列出本地镜像。',syntax:'docker images',example:'docker images | grep nginx',level:'easy'},
+    {cmd:'docker network',desc:'Docker 网络管理。',syntax:'docker network ls|create|inspect',example:'docker network create mynet',level:'mid'},
+    {cmd:'docker volume',desc:'数据卷管理。',syntax:'docker volume ls|create|rm',example:'docker volume create dbdata',level:'mid'},
   ]},
   git:{name:'Git',icon:'📦',color:'#fbbf24',list:[
     {cmd:'git clone',desc:'克隆仓库。',syntax:'git clone URL [目录]',example:'git clone https://gitee.com/u/r.git',level:'easy'},
@@ -681,6 +714,12 @@ var COMMANDS = {
     {cmd:'git diff',desc:'查看改动。',syntax:'git diff [文件] [--staged]',example:'git diff',level:'mid'},
     {cmd:'git stash',desc:'临时保存改动。',syntax:'git stash [push|pop|list]',example:'git stash push -m "wip"',level:'mid'},
     {cmd:'git reset',desc:'撤销提交。',syntax:'git reset [--soft|--hard] [提交]',example:'git reset --hard HEAD~1 (危险)',level:'hard'},
+    {cmd:'git rebase',desc:'变基合并提交。',syntax:'git rebase [-i] 分支',example:'git rebase -i HEAD~3 交互式',level:'hard'},
+    {cmd:'git cherry-pick',desc:'拣选指定提交。',syntax:'git cherry-pick 提交哈希',example:'git cherry-pick abc1234',level:'mid'},
+    {cmd:'git reflog',desc:'查看所有操作历史（救命用）。',syntax:'git reflog',example:'找回误删的分支/提交',level:'mid'},
+    {cmd:'git remote',desc:'远程仓库管理。',syntax:'git remote -v|add|set-url',example:'git remote set-url origin URL',level:'easy'},
+    {cmd:'git tag',desc:'标签管理。',syntax:'git tag [-a] 标签名 [-m 说明]',example:'git tag -a v1.0 -m "release"',level:'mid'},
+    {cmd:'git blame',desc:'查看每行代码的修改者。',syntax:'git blame 文件',example:'git blame main.go',level:'mid'},
   ]},
   database:{name:'数据库',icon:'🗄️',color:'#4ade80',list:[
     {cmd:'mysql -u -p',desc:'连接 MySQL。',syntax:'mysql -u 用户 -p [库]',example:'mysql -u root -p mydb',level:'easy'},
@@ -690,6 +729,11 @@ var COMMANDS = {
     {cmd:'mysqldump',desc:'导出备份。',syntax:'mysqldump -u u -p 库 > 文件.sql',example:'mysqldump -u root -p mydb > bk.sql',level:'mid'},
     {cmd:'redis-cli',desc:'连接 Redis。',syntax:'redis-cli [-h 主机] [-p 端口]',example:'redis-cli -h 127.0.0.1 -p 6379',level:'easy'},
     {cmd:'redis-cli INFO',desc:'Redis 信息统计。',syntax:'redis-cli INFO [section]',example:'redis-cli INFO memory',level:'mid'},
+    {cmd:'EXPLAIN',desc:'分析 SQL 执行计划。',syntax:'EXPLAIN SELECT ...',example:'EXPLAIN SELECT * FROM users WHERE id=1',level:'mid'},
+    {cmd:'CREATE INDEX',desc:'创建索引。',syntax:'CREATE INDEX 名 ON 表(列)',example:'CREATE INDEX idx_name ON users(name)',level:'mid'},
+    {cmd:'mongosh',desc:'连接 MongoDB。',syntax:'mongosh "URI"',example:'mongosh "mongodb://localhost:27017"',level:'mid'},
+    {cmd:'psql',desc:'连接 PostgreSQL。',syntax:'psql -U 用户 -d 库',example:'psql -U postgres -d mydb',level:'mid'},
+    {cmd:'redis-cli KEYS',desc:'Redis 查找键（生产慎用）。',syntax:'redis-cli KEYS 模式',example:'redis-cli KEYS "user:*" 用 SCAN 替代',level:'mid'},
   ]},
   monitor:{name:'监控运维',icon:'📊',color:'#6c8cff',list:[
     {cmd:'systemctl start/stop/restart',desc:'管理服务。',syntax:'systemctl 动作 服务',example:'systemctl restart nginx',level:'easy'},
@@ -700,6 +744,10 @@ var COMMANDS = {
     {cmd:'dmesg',desc:'内核日志。',syntax:'dmesg [-T] | tail',example:'dmesg -T | tail -30',level:'mid'},
     {cmd:'lsof',desc:'打开的文件/连接。',syntax:'lsof [-i 端口] [-p PID]',example:'lsof -i :8080',level:'mid'},
     {cmd:'strace',desc:'跟踪系统调用。',syntax:'strace [-p PID] 命令',example:'strace -p 1234',level:'hard'},
+    {cmd:'pidstat',desc:'进程级资源统计。',syntax:'pidstat [选项] [延迟]',example:'pidstat -u -r -d 1 5',level:'mid'},
+    {cmd:'mpstat',desc:'CPU 核级统计。',syntax:'mpstat [-P ALL] [延迟]',example:'mpstat -P ALL 1',level:'mid'},
+    {cmd:'hostnamectl',desc:'查看/设置主机名。',syntax:'hostnamectl [set-hostname 名]',example:'hostnamectl set-hostname myserver',level:'easy'},
+    {cmd:'timedatectl',desc:'时间和时区管理。',syntax:'timedatectl [set-timezone 时区]',example:'timedatectl set-timezone Asia/Shanghai',level:'easy'},
   ]},
   text:{name:'文本处理',icon:'📝',color:'#a78bfa',list:[
     {cmd:'cat',desc:'查看文件内容。',syntax:'cat [选项] 文件',example:'cat -n file.txt',level:'easy'},
@@ -712,6 +760,10 @@ var COMMANDS = {
     {cmd:'tr',desc:'字符转换。',syntax:'tr [选项] 源 目标',example:'cat f | tr a-z A-Z',level:'mid'},
     {cmd:'xargs',desc:'参数传递。',syntax:'命令 | xargs 命令',example:'cat urls.txt | xargs wget',level:'hard'},
     {cmd:'jq',desc:'JSON 处理。',syntax:"jq [选项] '过滤器' 文件",example:"cat d.json | jq '.users[].name'",level:'hard'},
+    {cmd:'diff',desc:'比较文件差异。',syntax:'diff [选项] 文件1 文件2',example:'diff -u old.txt new.txt',level:'mid'},
+    {cmd:'tee',desc:'同时输出到屏幕和文件。',syntax:'命令 | tee 文件',example:'ls | tee output.txt',level:'easy'},
+    {cmd:'paste',desc:'合并文件列。',syntax:'paste 文件1 文件2',example:'paste a.txt b.txt',level:'mid'},
+    {cmd:'comm',desc:'比较两个有序文件。',syntax:'comm 文件1 文件2',example:'comm -12 a.txt b.txt 交集',level:'hard'},
   ]},
   disk:{name:'磁盘文件',icon:'💾',color:'#fbbf24',list:[
     {cmd:'lsblk',desc:'列出块设备。',syntax:'lsblk [-f]',example:'lsblk -f 显示文件系统',level:'easy'},
@@ -720,6 +772,10 @@ var COMMANDS = {
     {cmd:'ln -s',desc:'创建软链接。',syntax:'ln -s 源 链接',example:'ln -s /opt/app /var/www/app',level:'mid'},
     {cmd:'find',desc:'查找文件。',syntax:'find 路径 [选项]',example:'find / -name "*.log" -size +100M',level:'mid'},
     {cmd:'rsync',desc:'高效同步备份。',syntax:'rsync [选项] 源 目标',example:'rsync -avz --delete ./src/ host:/backup/',level:'hard'},
+    {cmd:'fdisk',desc:'磁盘分区表操作。',syntax:'fdisk [-l] 设备',example:'fdisk -l /dev/sda',level:'hard'},
+    {cmd:'mkfs',desc:'格式化文件系统。',syntax:'mkfs -t 类型 设备',example:'mkfs -t ext4 /dev/sdb1',level:'hard'},
+    {cmd:'fsck',desc:'文件系统检查修复。',syntax:'fsck [-y] 设备',example:'fsck -y /dev/sdb1 (需卸载)',level:'hard'},
+    {cmd:'iotop',desc:'磁盘 I/O 进程监控。',syntax:'iotop [-o] [-d 秒]',example:'iotop -o 只显示有IO的进程',level:'mid'},
   ]}
 };
 
@@ -1043,8 +1099,34 @@ document.addEventListener('pointermove', function(e){
 });
 
 /* ===== Splash ===== */
-function hideSplash(){ document.getElementById('splash').classList.add('gone'); document.getElementById('app').classList.add('ready'); setTimeout(function(){ document.getElementById('splash').style.display='none'; },700); }
+var _splashHidden = false;
+function forceHideSplash(){
+  if(_splashHidden) return;
+  _splashHidden = true;
+  var s=document.getElementById('splash');
+  if(s){ s.classList.add('gone'); setTimeout(function(){ s.style.display='none'; },700); }
+  var a=document.getElementById('app');
+  if(a){ a.classList.add('ready'); }
+}
+function hideSplash(){ forceHideSplash(); }
 setTimeout(hideSplash, 1100);
+// 兜底：5秒后如果还没隐藏，显示跳过按钮
+setTimeout(function(){
+  if(!_splashHidden){
+    var btn=document.getElementById('splashSkip');
+    if(btn) btn.style.display='block';
+  }
+}, 5000);
+// 全局错误捕获：显示在 splash 上，避免白屏卡死
+window.addEventListener('error', function(e){
+  var errEl=document.getElementById('splashError');
+  if(errEl && !_splashHidden){
+    errEl.style.display='block';
+    errEl.textContent = '加载异常: ' + (e.message || '未知错误') + ' (' + (e.filename||'').split('/').pop() + ':' + (e.lineno||'?') + ')';
+    var btn=document.getElementById('splashSkip');
+    if(btn) btn.style.display='block';
+  }
+});
 
 /* ===== Toast ===== */
 function toast(msg,type){
